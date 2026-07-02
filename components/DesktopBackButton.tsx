@@ -5,14 +5,14 @@ import { useEffect, useState } from 'react'
 /**
  * "← Content OS" button — only shown when the poster is running as a full-page
  * view inside the Content OS desktop app (opened with ?desktop=1). It navigates
- * the webview back to the Content OS shell (its local server on :3737), since
- * that top-level page replaced the app's own launcher.
+ * the webview back to the Content OS board, served by the home server (the
+ * /api/home/board proxy 302s to HOME_SERVER_URL, so no URL is hardcoded here).
  *
  * On the normal web (phone / browser) the flag is never set, so this renders
  * nothing and the site is unaffected.
  */
 
-const CONTENT_OS_URL = 'http://localhost:3737/'
+const CONTENT_OS_URL = '/api/home/board'
 const FLAG = 'contentos:desktop'
 
 export default function DesktopBackButton() {

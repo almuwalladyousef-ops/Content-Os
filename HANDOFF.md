@@ -31,19 +31,18 @@ green before every commit.
 
 ## Next (in order)
 
-1. **Sonnet — Phase 4**: dashboard at `app/page.tsx` + two-group sidebar (plan §5 Phase 4).
-2. **Opus — Phase 5**: TriggerDM merge under `/dm` + `/api/dm/*`, Next 14→16 pass,
-   delete ALL Business/Personal hardcoding, rewire its driveDB to `lib/drive-db.ts`
-   (`readDoc/writeDoc/updateDoc` on section `dm`). Its OLD auth pages are NOT copied —
-   auth is already done (Phase 6). Make `lib/dm/accounts.js` read tokens from
-   `storedTokens` (keys `WORKSPACE_TOKEN:ig-*` written by the new callback).
-   Implement `/api/dm/refresh-token` to refresh all stored long-lived tokens via
-   `refreshLongLivedToken()` from `lib/instagram.ts`.
-3. **Sonnet — Phase 7**: LinkScribe UI + `linkscribe-worker.js` on the home server
-   (local Whisper; plan §6.3).
-4. **Opus — Phase 8**: Readback UI port + `/api/readback/[...path]` proxy + engine
-   mount in home-server (plan §5 Phase 8, §7).
-5. **Sonnet — Phase 9**: cleanup + root README with Yousef's manual steps (plan §10).
+ALL PHASES COMPLETE. Nothing left to build — the suite is feature-complete and
+`npm run build` is green. Remaining work is Yousef's manual deploy (root `README.md`
+§ "Yousef's manual steps").
+
+Done since this file was written:
+- **Phase 4** (dashboard + two-group sidebar + `/api/home/health` + `/api/home/board`).
+- **Phase 5** (TriggerDM under `/dm`, `/api/dm/*`, `lib/dm/*` on Drive-DB section `dm`,
+  all Business/Personal buckets deleted, `/api/dm/refresh-token` via `refreshLongLivedToken`).
+- **Home server** — readback engine mounted at `/readback-api/*`, `linkscribe-worker.js` live.
+- **Phase 7** (LinkScribe UI + async job model + `/api/linkscribe/*` proxies).
+- **Phase 8** (Readback UI port + `/api/readback/[...path]` proxy).
+- **Phase 9** (grep-and-destroy clean, `.env.example` finalized, root + home-server READMEs).
 
 ## Env quick reference
 

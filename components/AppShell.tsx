@@ -41,9 +41,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const onKey = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey
       if (isMod && e.key === 'b') { e.preventDefault(); setNavOpen(v => !v) }
-      if (isMod && e.key === '1') { e.preventDefault(); router.push('/post') }
-      if (isMod && e.key === '2') { e.preventDefault(); router.push('/analysis') }
-      if (isMod && e.key === '3') { e.preventDefault(); router.push('/history') }
+      if (isMod && e.key === '1') { e.preventDefault(); router.push('/') }
+      if (isMod && e.key === '2') { e.preventDefault(); router.push('/post') }
+      if (isMod && e.key === '3') { e.preventDefault(); router.push('/analysis') }
+      if (isMod && e.key === '4') { e.preventDefault(); router.push('/history') }
+      if (isMod && e.key === '5') { e.preventDefault(); router.push('/dm') }
       if (isMod && e.key === ',') { e.preventDefault(); router.push('/settings') }
     }
     window.addEventListener('keydown', onKey)

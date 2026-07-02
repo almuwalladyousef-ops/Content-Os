@@ -2,12 +2,20 @@
 
 import Link from 'next/link'
 import {
+  IconGrid,
   IconPost,
   IconAnalysis,
   IconHistory,
+  IconMessage,
   IconSettings,
   IconSidebar,
+  IconLink,
+  IconHeadphones,
+  IconExternal,
+  IconLayout,
 } from './Icons'
+
+type NavItem = { href: string; label: string; Icon: (p: { size?: number }) => React.ReactElement; shortcut?: string }
 import WorkspaceSwitcher from './WorkspaceSwitcher'
 
 interface SidebarProps {
@@ -19,11 +27,18 @@ interface SidebarProps {
   email: string | null
 }
 
-const NAV_ITEMS = [
-  { href: '/post',     label: 'Post',     Icon: IconPost,     shortcut: '⌘1' },
-  { href: '/analysis', label: 'Analysis', Icon: IconAnalysis, shortcut: '⌘2' },
-  { href: '/history',  label: 'History',  Icon: IconHistory,  shortcut: '⌘3' },
-  { href: '/settings', label: 'Settings', Icon: IconSettings, shortcut: '⌘,' },
+const MAIN_NAV = [
+  { href: '/',         label: 'Dashboard',     Icon: IconGrid,     shortcut: '⌘1' },
+  { href: '/post',     label: 'Post',          Icon: IconPost,     shortcut: '⌘2' },
+  { href: '/analysis', label: 'Analysis',      Icon: IconAnalysis, shortcut: '⌘3' },
+  { href: '/history',  label: 'History',       Icon: IconHistory,  shortcut: '⌘4' },
+  { href: '/dm',       label: 'DM Automation', Icon: IconMessage,  shortcut: '⌘5' },
+  { href: '/settings', label: 'Settings',      Icon: IconSettings, shortcut: '⌘,' },
+]
+
+const TOOLS_NAV = [
+  { href: '/linkscribe', label: 'LinkScribe', Icon: IconLink },
+  { href: '/readback',   label: 'Readback',   Icon: IconHeadphones },
 ]
 
 export default function Sidebar({ navOpen, isMobile, onToggle, pathname, connectedCount, email }: SidebarProps) {
@@ -99,57 +114,43 @@ export default function Sidebar({ navOpen, isMobile, onToggle, pathname, connect
 
       {/* Nav */}
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {NAV_ITEMS.map(({ href, label, Icon, shortcut }) => {
-          const active = pathname === href || pathname.startsWith(href + '/')
-          return (
-            <Link
-              key={href}
-              href={href}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '9px 10px',
-                borderRadius: 9,
-                color: active ? 'var(--text)' : 'var(--text-dim)',
-                background: active ? 'var(--surface-2)' : 'transparent',
-                border: `1px solid ${active ? 'var(--border)' : 'transparent'}`,
-                position: 'relative',
-                transition: 'all 120ms ease',
-                textDecoration: 'none',
-              }}
-              onMouseEnter={e => {
-                if (!active) (e.currentTarget as HTMLAnchorElement).style.background = 'oklch(0.215 0.014 255 / 0.5)'
-              }}
-              onMouseLeave={e => {
-                if (!active) (e.currentTarget as HTMLAnchorElement).style.background = 'transparent'
-              }}
-            >
-              {/* Left accent bar for active item */}
-              {active && (
-                <span style={{
-                  position: 'absolute',
-                  left: -14,
-                  top: 8,
-                  bottom: 8,
-                  width: 2,
-                  background: 'var(--accent)',
-                  borderRadius: 999,
-                  boxShadow: '0 0 8px var(--accent-glow)',
-                }} />
-              )}
-              <Icon size={17} />
-              <span style={{ fontSize: 13, fontWeight: active ? 500 : 400 }}>{label}</span>
-              <span
-                className="mono"
-                style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-mute)' }}
-              >
-                {shortcut}
-              </span>
-            </Link>
-          )
-        })}
+        {MAIN_NAV.map(item => (
+          <NavLink key={item.href} item={item} pathname={pathname} />
+        ))}
       </nav>
+
+      {/* Tools group (visually secondary) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
+        <div
+          className="micro"
+          style={{ padding: '8px 10px 4px', color: 'var(--text-mute)', letterSpacing: '0.12em' }}
+        >
+          TOOLS
+        </div>
+        {TOOLS_NAV.map(item => (
+          <NavLink key={item.href} item={item} pathname={pathname} />
+        ))}
+        {/* Board lives on the home server — open it in a new tab */}
+        <a
+          href="/api/home/board"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '9px 10px', borderRadius: 9,
+            color: 'var(--text-dim)', border: '1px solid transparent',
+            textDecoration: 'none', transition: 'all 120ms ease',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'oklch(0.215 0.014 255 / 0.5)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'transparent' }}
+        >
+          <IconLayout size={17} />
+          <span style={{ fontSize: 13 }}>Board</span>
+          <span style={{ marginLeft: 'auto', color: 'var(--text-mute)' }}>
+            <IconExternal size={12} />
+          </span>
+        </a>
+      </div>
 
       {/* Bottom slot */}
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -217,6 +218,55 @@ export default function Sidebar({ navOpen, isMobile, onToggle, pathname, connect
         </Link>
       </div>
     </aside>
+  )
+}
+
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const { href, label, Icon, shortcut } = item
+  const active = href === '/' ? pathname === '/' : (pathname === href || pathname.startsWith(href + '/'))
+  return (
+    <Link
+      href={href}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '9px 10px',
+        borderRadius: 9,
+        color: active ? 'var(--text)' : 'var(--text-dim)',
+        background: active ? 'var(--surface-2)' : 'transparent',
+        border: `1px solid ${active ? 'var(--border)' : 'transparent'}`,
+        position: 'relative',
+        transition: 'all 120ms ease',
+        textDecoration: 'none',
+      }}
+      onMouseEnter={e => {
+        if (!active) (e.currentTarget as HTMLAnchorElement).style.background = 'oklch(0.215 0.014 255 / 0.5)'
+      }}
+      onMouseLeave={e => {
+        if (!active) (e.currentTarget as HTMLAnchorElement).style.background = 'transparent'
+      }}
+    >
+      {active && (
+        <span style={{
+          position: 'absolute',
+          left: -14,
+          top: 8,
+          bottom: 8,
+          width: 2,
+          background: 'var(--accent)',
+          borderRadius: 999,
+          boxShadow: '0 0 8px var(--accent-glow)',
+        }} />
+      )}
+      <Icon size={17} />
+      <span style={{ fontSize: 13, fontWeight: active ? 500 : 400 }}>{label}</span>
+      {shortcut && (
+        <span className="mono" style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-mute)' }}>
+          {shortcut}
+        </span>
+      )}
+    </Link>
   )
 }
 

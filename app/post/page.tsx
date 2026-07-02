@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
-import { upload } from '@vercel/blob/client'
+import { uploadMedia, deleteMedia } from '@/lib/media-upload'
 import StatusDot from '@/components/StatusDot'
 import {
   IconUpload, IconFilm, IconX, IconArrowRight, IconClock,
@@ -277,19 +277,14 @@ export default function PostPage() {
     setRunning(true)
     setAllStatus('uploading', 'uploading...')
     let blobUrl: string
+    let fileKey: string
     try {
-      const ext = (file.name.split('.').pop() || 'mp4').toLowerCase()
-      const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
       let lastPct = -1
-      const blob = await upload(safeName, file, {
-        access: 'public',
-        handleUploadUrl: '/api/blob/upload',
-        onUploadProgress: ({ percentage }: { percentage: number }) => {
-          const pct = Math.round(percentage)
-          if (pct >= lastPct + 5 || pct === 100) { lastPct = pct; setAllStatus('uploading', `uploading ${pct}%...`) }
-        },
+      const uploaded = await uploadMedia(file, (pct) => {
+        if (pct >= lastPct + 5 || pct === 100) { lastPct = pct; setAllStatus('uploading', `uploading ${pct}%...`) }
       })
-      blobUrl = blob.url
+      blobUrl = uploaded.url
+      fileKey = uploaded.key
       setAllStatus('uploading', 'sending to platforms...')
     } catch (e) {
       setAllStatus('failed', `Upload failed: ${String(e)}`); setRunning(false); return
@@ -310,7 +305,7 @@ export default function PostPage() {
     const [yt, ig, tt] = await Promise.all(promises)
     const ytUrl = yt.url; const igUrl = ig.url
 
-    fetch('/api/blob/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: blobUrl }) }).catch(() => {})
+    deleteMedia(fileKey)
     fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoName: file.name, results: { youtube: yt.result, instagram: ig.result, tiktok: tt.result } }) }).catch(() => {})
 
     const platforms: Platform[] = []
@@ -343,16 +338,9 @@ export default function PostPage() {
     setScheduling(true)
     setScheduledMsg('Uploading video…')
     try {
-      const ext = (file.name.split('.').pop() || 'mp4').toLowerCase()
-      const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
       let lastPct = -1
-      const blob = await upload(safeName, file, {
-        access: 'public',
-        handleUploadUrl: '/api/blob/upload',
-        onUploadProgress: ({ percentage }: { percentage: number }) => {
-          const pct = Math.round(percentage)
-          if (pct >= lastPct + 5 || pct === 100) { lastPct = pct; setScheduledMsg(`Uploading ${pct}%…`) }
-        },
+      const uploaded = await uploadMedia(file, (pct) => {
+        if (pct >= lastPct + 5 || pct === 100) { lastPct = pct; setScheduledMsg(`Uploading ${pct}%…`) }
       })
 
       setScheduledMsg('Saving schedule…')
@@ -362,7 +350,8 @@ export default function PostPage() {
           scheduledAt: when.toISOString(),
           videoType,
           platforms: enabled,
-          blobUrl: blob.url,
+          blobUrl: uploaded.url,
+          fileKey: uploaded.key,
           fileName: file.name,
           size: file.size,
           type: file.type || 'video/mp4',

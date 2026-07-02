@@ -11,7 +11,8 @@ export const maxDuration = 60
 /**
  * Enqueue a post to fire later. Captures (snapshots) the credentials for the
  * enabled platforms now, because the cron worker that fires the post has no
- * session. The video is expected to already be uploaded to Blob by the client.
+ * session. The video is expected to already be uploaded to the home server
+ * by the client (see lib/media-upload.ts).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
       videoType: body.videoType === 'long' ? 'long' : 'short',
       platforms,
       blobUrl: String(body.blobUrl),
+      fileKey: body.fileKey ? String(body.fileKey) : undefined,
       fileName: String(body.fileName || 'video.mp4'),
       size: Number(body.size) || 0,
       type: String(body.type || 'video/mp4'),

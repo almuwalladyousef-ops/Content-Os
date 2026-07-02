@@ -1,17 +1,19 @@
-import { put, list, del } from '@vercel/blob'
 import { encrypt, decrypt } from './crypto'
+import { readDoc, writeDoc } from './drive-db'
+import { deleteFile } from './home-storage'
 
 /**
  * Persistent queue of scheduled posts.
  *
- * Why Blob: the cron worker runs with no cookies/session, so it needs a store it
- * can reach using only an env credential (BLOB_READ_WRITE_TOKEN, auto-injected
- * on Vercel). The whole queue — including the per-job credential snapshot — is
- * AES-encrypted with NEXTAUTH_SECRET before it touches Blob, so the (public-URL)
- * blob is opaque without the server secret.
+ * The cron worker runs with no cookies/session, so the queue lives in the
+ * Google Drive JSON-DB (env-credential access only). The whole queue —
+ * including the per-job credential snapshot — is AES-encrypted with
+ * NEXTAUTH_SECRET before it touches Drive, so the stored doc is opaque
+ * without the server secret. Video files themselves live on the Mac mini
+ * home server (see lib/home-storage.ts).
  */
 
-const QUEUE_PATH = 'schedule/queue.json.enc'
+const QUEUE_SECTION = 'schedule'
 
 export type Platform = 'youtube' | 'instagram' | 'tiktok'
 
@@ -34,8 +36,11 @@ export interface ScheduledJob {
   status: 'pending' | 'posting' | 'done' | 'failed'
   videoType: 'short' | 'long'
   platforms: Record<Platform, boolean>
-  // media
+  // media — blobUrl is a publicly fetchable URL on the home server
+  // (Instagram's Graph API downloads it directly); fileKey is the
+  // home-server storage key used for cleanup.
   blobUrl: string
+  fileKey?: string
   fileName: string
   size: number
   type: string
@@ -64,14 +69,8 @@ export function toPublicJob(job: ScheduledJob): PublicJob {
 
 export async function loadQueue(): Promise<ScheduledJob[]> {
   try {
-    const { blobs } = await list({ prefix: QUEUE_PATH })
-    const found = blobs.find(b => b.pathname === QUEUE_PATH)
-    if (!found) return []
-    // Cache-bust: Blob URLs are CDN-cached, but we always want the latest queue.
-    const res = await fetch(`${found.url}?ts=${Date.now()}`, { cache: 'no-store' })
-    if (!res.ok) return []
-    const enc = await res.text()
-    if (!enc.trim()) return []
+    const enc = await readDoc<string>(QUEUE_SECTION)
+    if (!enc || typeof enc !== 'string' || !enc.trim()) return []
     return JSON.parse(decrypt(enc)) as ScheduledJob[]
   } catch {
     return []
@@ -79,13 +78,7 @@ export async function loadQueue(): Promise<ScheduledJob[]> {
 }
 
 export async function saveQueue(jobs: ScheduledJob[]): Promise<void> {
-  await put(QUEUE_PATH, encrypt(JSON.stringify(jobs)), {
-    access: 'public',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: 'text/plain',
-    cacheControlMaxAge: 0,
-  })
+  await writeDoc(QUEUE_SECTION, encrypt(JSON.stringify(jobs)))
 }
 
 export async function addJob(job: ScheduledJob): Promise<void> {
@@ -94,7 +87,11 @@ export async function addJob(job: ScheduledJob): Promise<void> {
   await saveQueue(jobs)
 }
 
-/** Removes the stored video blob for a job (called after a successful post). */
+/** Removes the stored video on the home server (called after a successful post). */
 export async function deleteJobVideo(job: ScheduledJob): Promise<void> {
-  try { await del(job.blobUrl) } catch { /* best effort */ }
+  // Older jobs stored only the URL; derive the key from it.
+  const key = job.fileKey
+    || decodeURIComponent((job.blobUrl.split('/storage/file/')[1] || '').split('?')[0])
+  if (!key) return
+  try { await deleteFile(key) } catch { /* best effort */ }
 }

@@ -1,0 +1,432 @@
+/* Readback styles, scoped under .readback so they never touch host pages.
+ * Generated from readback/public/css/{tokens,app}.css (Phase 8). Theme toggles
+ * data-theme on the .readback element; fonts are self-hosted under /fonts/readback.
+ * Native CSS nesting — component selectors are descendant-scoped by .readback. */
+
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/fonts/readback/newsreader-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal; font-weight: 500; font-display: swap;
+  src: url('/fonts/readback/newsreader-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal; font-weight: 600; font-display: swap;
+  src: url('/fonts/readback/newsreader-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Newsreader';
+  font-style: italic; font-weight: 400; font-display: swap;
+  src: url('/fonts/readback/newsreader-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter Tight';
+  font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/fonts/readback/inter-tight-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter Tight';
+  font-style: normal; font-weight: 500; font-display: swap;
+  src: url('/fonts/readback/inter-tight-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter Tight';
+  font-style: normal; font-weight: 600; font-display: swap;
+  src: url('/fonts/readback/inter-tight-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal; font-weight: 500; font-display: swap;
+  src: url('/fonts/readback/jetbrains-mono-500.woff2') format('woff2');
+}
+
+/* ============================================================================
+   Readback — design tokens.  Direction: "lamp on paper".
+   A studio monitor for the written word: dark, calm, with one warm amber lamp
+   that lives only on the word currently being spoken. Everything else is quiet.
+   ========================================================================= */
+
+/* --- Self-hosted faces (offline-safe for the ContentOS Electron port) ------ */
+
+
+
+
+
+
+
+
+
+.readback {
+  /* Type roles */
+  --font-body: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-ui: 'Inter Tight', system-ui, -apple-system, sans-serif;
+  --font-data: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Type scale */
+  --t-eyebrow: 0.72rem;
+  --t-ui: 0.94rem;
+  --t-body: clamp(1.18rem, 0.95rem + 0.9vw, 1.5rem);
+  --t-display: clamp(2.2rem, 1.4rem + 3.2vw, 3.6rem);
+  --reading-measure: 38rem;
+
+  /* Spacing */
+  --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem;
+  --sp-5: 1.5rem; --sp-6: 2rem; --sp-7: 3rem; --sp-8: 4.5rem;
+  --radius: 12px;
+  --radius-sm: 8px;
+
+  /* Motion (design-engineering) */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-press: 140ms;
+  --dur-word: 180ms;
+  --dur-panel: 320ms;
+
+  /* The lamp — single accent, used only on the active word */
+  --glow: #e8a33d;
+  --glow-strong: #f1b65b;
+  --glow-halo: rgba(232, 163, 61, 0.16);
+}
+
+/* --- Dark: the primary listening mode -------------------------------------- */
+.readback,
+.readback[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0e1014;
+  --bg-grad: radial-gradient(120% 80% at 50% -10%, #15181f 0%, #0e1014 60%);
+  --surface: #16191f;
+  --surface-2: #1d212a;
+  --line: #272b34;
+  --text: #e7e3d8;       /* upcoming / unread words: warm off-white */
+  --text-dim: #79766c;   /* already-spoken words: muted */
+  --muted: #6a6d76;      /* captions, secondary ui */
+  --on-glow: #1a130a;    /* text sitting on an amber fill */
+}
+
+/* --- Light: "paper" -------------------------------------------------------- */
+.readback[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f3efe6;
+  --bg-grad: radial-gradient(120% 80% at 50% -10%, #fbf8f1 0%, #f0ebe0 65%);
+  --surface: #fbf8f1;
+  --surface-2: #f1ece0;
+  --line: #e2dccd;
+  --text: #241f17;
+  --text-dim: #a39b88;
+  --muted: #847c6b;
+  --glow: #c9802a;       /* deepen the lamp for contrast on paper */
+  --glow-strong: #b06f1f;
+  --glow-halo: rgba(201, 128, 42, 0.14);
+  --on-glow: #fbf8f1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .readback {
+    --dur-press: 0ms; --dur-word: 0ms; --dur-panel: 0ms;
+  }
+}
+
+@keyframes viewIn { from { opacity: 0; transform: translateY(6px); } }
+
+@keyframes busyPulse { 0%, 100% { opacity: 0.85; } 50% { opacity: 0.5; } }
+
+.readback {
+  font-family: var(--font-ui);
+  font-size: var(--t-ui);
+  color: var(--text);
+  background: var(--bg);
+  background-image: var(--bg-grad);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100%;
+}
+
+.readback {
+  /* ============================================================================
+     Readback — layout + components
+     ========================================================================= */
+  
+  
+  
+  
+  button { font-family: inherit; color: inherit; }
+  :focus-visible {
+    outline: 2px solid var(--glow);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  
+  .eyebrow {
+    font-family: var(--font-data);
+    font-size: var(--t-eyebrow);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .data { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+  [hidden] { display: none !important; }
+  
+  /* --- App frame ------------------------------------------------------------- */
+  .app { min-height: 100%; display: flex; flex-direction: column; }
+  
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-4) var(--sp-5);
+    position: sticky; top: 0; z-index: 20;
+    backdrop-filter: blur(8px);
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--dur-panel) var(--ease-out);
+  }
+  .topbar.is-stuck { border-bottom-color: var(--line); }
+  .brand {
+    display: flex; align-items: baseline; gap: 0.5ch;
+    font-family: var(--font-body); font-weight: 600; font-size: 1.25rem;
+    letter-spacing: -0.01em; background: none; border: 0; cursor: pointer; padding: 0;
+  }
+  .brand .dot { color: var(--glow); }
+  .topbar-actions { display: flex; gap: var(--sp-2); align-items: center; }
+  
+  /* --- Buttons --------------------------------------------------------------- */
+  .btn {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.85rem;
+    font-size: var(--t-ui); font-weight: 500;
+    cursor: pointer;
+    transition: transform var(--dur-press) var(--ease-out),
+                background var(--dur-press) ease, border-color var(--dur-press) ease;
+  }
+  .btn:hover { background: var(--surface-2); }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary {
+    background: var(--text); color: var(--bg); border-color: var(--text);
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: color-mix(in srgb, var(--text) 88%, var(--bg)); }
+  .btn-ghost { background: transparent; }
+  .btn-icon {
+    display: inline-grid; place-items: center;
+    width: 2.4rem; height: 2.4rem; padding: 0; border-radius: 50%;
+  }
+  .btn-icon svg { width: 1.2rem; height: 1.2rem; }
+  
+  /* --- View transitions ------------------------------------------------------ */
+  .view { flex: 1; animation: viewIn var(--dur-panel) var(--ease-out) both; }
+  
+  @media (prefers-reduced-motion: reduce) { .view { animation: none; } }
+  
+  /* --- Input view ------------------------------------------------------------ */
+  .input-wrap {
+    max-width: 46rem; margin: 0 auto; padding: var(--sp-8) var(--sp-5) var(--sp-7);
+  }
+  .input-hero { margin-bottom: var(--sp-6); }
+  .input-hero h1 {
+    font-family: var(--font-body); font-weight: 600;
+    font-size: var(--t-display); line-height: 1.04; letter-spacing: -0.02em;
+    margin: 0.4rem 0 0;
+  }
+  .input-hero h1 em { font-style: italic; color: var(--glow); }
+  .input-hero p { color: var(--muted); max-width: 30rem; margin: var(--sp-3) 0 0; }
+  
+  .composer {
+    position: relative;
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--surface);
+    transition: border-color var(--dur-panel) ease, box-shadow var(--dur-panel) ease;
+  }
+  .composer.is-drag {
+    border-color: var(--glow);
+    box-shadow: 0 0 0 3px var(--glow-halo);
+  }
+  .composer textarea {
+    display: block; width: 100%; min-height: 11rem; resize: vertical;
+    border: 0; background: transparent; color: var(--text);
+    font-family: var(--font-body); font-size: 1.12rem; line-height: 1.6;
+    padding: var(--sp-5); outline: none;
+  }
+  .composer textarea::placeholder { color: var(--muted); }
+  .composer-foot {
+    display: flex; align-items: center; gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line);
+  }
+  .composer-foot .hint { color: var(--muted); font-size: 0.84rem; }
+  .composer-foot .spacer { flex: 1; }
+  .drop-note {
+    position: absolute; inset: 0; display: none; place-items: center;
+    border-radius: var(--radius); background: color-mix(in srgb, var(--bg) 70%, transparent);
+    font-family: var(--font-data); letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--glow); font-size: 0.8rem;
+  }
+  .composer.is-drag .drop-note { display: grid; }
+  
+  .url-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-4); }
+  .url-row input {
+    flex: 1; border: 1px solid var(--line); background: var(--surface);
+    border-radius: var(--radius-sm); padding: 0.6rem 0.85rem;
+    color: var(--text); font-family: var(--font-ui); font-size: var(--t-ui); outline: none;
+  }
+  .url-row input:focus { border-color: var(--glow); }
+  
+  .input-error {
+    margin-top: var(--sp-4); color: var(--glow-strong);
+    font-size: 0.9rem; min-height: 1.2em;
+  }
+  
+  /* --- Reader view ----------------------------------------------------------- */
+  .reader-head {
+    max-width: var(--reading-measure); margin: var(--sp-6) auto var(--sp-4);
+    padding: 0 var(--sp-5);
+  }
+  .reader-head .kicker {
+    display: flex; gap: var(--sp-3); align-items: center; color: var(--muted);
+    font-family: var(--font-data); font-size: var(--t-eyebrow);
+    text-transform: uppercase; letter-spacing: 0.16em;
+  }
+  .reader-head h1 {
+    font-family: var(--font-body); font-weight: 600; font-size: 2rem;
+    line-height: 1.15; letter-spacing: -0.015em; margin: var(--sp-3) 0 0;
+  }
+  
+  .reading {
+    max-width: var(--reading-measure); margin: 0 auto;
+    padding: var(--sp-4) var(--sp-5) 40vh; /* tall bottom pad so last lines can park high */
+    font-family: var(--font-body); font-size: var(--t-body);
+    line-height: 1.85; color: var(--text);
+  }
+  .reading p { margin: 0 0 1.1em; }
+  
+  /* The signature: the reading lamp. The spoken word simply turns amber. */
+  .w {
+    color: var(--text);
+    transition: color var(--dur-word) ease, opacity var(--dur-word) ease;
+    cursor: pointer;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .w:hover { color: var(--glow-strong); }
+  }
+  .reading.is-playing .w:not(.is-active):not(.is-read) { opacity: 0.82; }
+  .w.is-read { color: var(--text-dim); }
+  .w.is-active { color: var(--glow); }
+  
+  /* --- Transport (the tape deck) --------------------------------------------- */
+  .transport {
+    position: fixed; left: 50%; bottom: var(--sp-5); transform: translateX(-50%);
+    z-index: 30; width: min(46rem, calc(100% - 2 * var(--sp-4)));
+    display: flex; align-items: center; gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--line); border-radius: 999px;
+    box-shadow: 0 10px 40px -12px rgba(0, 0, 0, 0.5);
+    transition: opacity var(--dur-panel) var(--ease-out),
+                transform var(--dur-panel) var(--ease-out);
+  }
+  @starting-style { .transport { opacity: 0; transform: translateX(-50%) translateY(12px); } }
+  .transport.is-busy { pointer-events: none; animation: busyPulse 1.3s ease-in-out infinite; }
+  
+  @media (prefers-reduced-motion: reduce) {
+    .transport.is-busy { animation: none; opacity: 0.7; }
+  }
+  
+  .play {
+    flex: none; width: 3rem; height: 3rem; border-radius: 50%;
+    display: grid; place-items: center; cursor: pointer;
+    background: var(--text); color: var(--bg); border: 0;
+    transition: transform var(--dur-press) var(--ease-out);
+  }
+  .play:active { transform: scale(0.94); }
+  .play svg { grid-area: 1 / 1; width: 1.3rem; height: 1.3rem; }
+  .play .i-pause { display: none; }
+  .play.playing .i-play { display: none; }
+  .play.playing .i-pause { display: block; }
+  
+  /* Skip (previous / next sentence) */
+  .tbtn {
+    flex: none; width: 2.3rem; height: 2.3rem; padding: 0; border: 0;
+    background: transparent; color: var(--muted); border-radius: 50%;
+    display: grid; place-items: center; cursor: pointer;
+    transition: color var(--dur-press) ease, transform var(--dur-press) var(--ease-out);
+  }
+  .tbtn:hover { color: var(--text); }
+  .tbtn:active { transform: scale(0.9); }
+  .tbtn svg { width: 1.05rem; height: 1.05rem; }
+  
+  .seek { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-3); }
+  .seek input[type='range'] { flex: 1; }
+  .time { color: var(--muted); font-size: 0.8rem; min-width: 8.5ch; text-align: right; }
+  
+  /* Range inputs — quiet, neutral track with a soft amber-free thumb */
+  input[type='range'] {
+    -webkit-appearance: none; appearance: none; height: 4px; border-radius: 99px;
+    background: var(--surface-2); cursor: pointer;
+  }
+  input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text); border: 2px solid var(--surface);
+    transition: transform var(--dur-press) var(--ease-out);
+  }
+  input[type='range']:active::-webkit-slider-thumb { transform: scale(1.2); }
+  
+  .transport-extras { display: flex; align-items: center; gap: var(--sp-2); }
+  .speed-pill {
+    font-family: var(--font-data); font-size: 0.78rem; color: var(--text);
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 99px; padding: 0.3rem 0.6rem; cursor: pointer; min-width: 4.2ch;
+    text-align: center;
+  }
+  .select {
+    font-family: var(--font-ui); font-size: 0.84rem; color: var(--text);
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 99px; padding: 0.32rem 0.5rem; max-width: 7.5rem; cursor: pointer;
+    flex: 0 1 auto; min-width: 0;
+  }
+  .transport-extras { flex: none; }
+  .transport .btn-icon { flex: none; }
+  
+  /* --- Library --------------------------------------------------------------- */
+  .library-wrap { max-width: 46rem; margin: 0 auto; padding: var(--sp-6) var(--sp-5) var(--sp-8); }
+  .library-wrap h2 { font-family: var(--font-body); font-weight: 600; font-size: 1.6rem; margin: 0 0 var(--sp-4); }
+  .lib-empty { color: var(--muted); padding: var(--sp-6) 0; }
+  .lib-item {
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--surface); margin-bottom: var(--sp-3);
+    transition: border-color var(--dur-press) ease, transform var(--dur-press) var(--ease-out);
+  }
+  .lib-item:hover { border-color: var(--muted); }
+  .lib-item .lib-main { flex: 1; min-width: 0; cursor: pointer; }
+  .lib-item .lib-title {
+    font-family: var(--font-body); font-size: 1.18rem; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .lib-item .lib-meta { color: var(--muted); font-family: var(--font-data); font-size: 0.74rem; margin-top: 0.2rem; }
+  .lib-item .lib-meta .read-badge { color: var(--glow); }
+  .lib-progress { height: 3px; border-radius: 99px; background: var(--surface-2); margin-top: var(--sp-3); overflow: hidden; }
+  .lib-progress > span { display: block; height: 100%; background: var(--glow); }
+  .lib-actions { display: flex; gap: var(--sp-1); }
+  
+  /* --- Toast ----------------------------------------------------------------- */
+  .toast {
+    position: fixed; left: 50%; bottom: calc(var(--sp-5) + 4.5rem);
+    transform: translateX(-50%); z-index: 40;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 99px;
+    padding: 0.5rem 1rem; font-size: 0.86rem;
+    opacity: 1; transition: opacity 400ms ease, transform 400ms var(--ease-out);
+  }
+  @starting-style { .toast { opacity: 0; transform: translateX(-50%) translateY(8px); } }
+  .toast[hidden] { display: block !important; opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(8px); }
+  
+  @media (max-width: 540px) {
+    .transport { gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
+    .select { max-width: 6rem; }
+    .time { min-width: 7ch; }
+  }
+}

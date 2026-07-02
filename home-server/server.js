@@ -51,10 +51,14 @@ app.get('/api/health', (req, res) => res.json({ ok: true, service: 'contentos-ho
 // ── Storage API (large files for the Vercel app; replaces Vercel Blob) ──────
 require('./storage')(app, { dataDir: DATA_DIR, secret: HOME_SERVER_SECRET });
 
-// ── LinkScribe job runner (download + local Whisper) — mounted by Phase 7 ───
-// require('./linkscribe-worker')(app, { dataDir: DATA_DIR, secret: HOME_SERVER_SECRET });
+// ── LinkScribe job runner (download + local Whisper) ────────────────────────
+require('./linkscribe-worker')(app, { dataDir: DATA_DIR, secret: HOME_SERVER_SECRET });
 
-// ── Readback engine — mounted at /readback-api/* by Phase 8 (ESM: use dynamic import)
+// ── Readback engine at /readback-api/* (ESM engine, dynamic-imported into CJS) ─
+process.env.READBACK_DATA_DIR = process.env.READBACK_DATA_DIR || path.join(DATA_DIR, 'readback');
+import('./readback/index.mjs')
+  .then(({ mountReadback }) => mountReadback(app))
+  .catch(err => console.error('[readback] mount failed:', err));
 
 // ── Content OS frontend + vault (markdown files) ─────────────────────────────
 

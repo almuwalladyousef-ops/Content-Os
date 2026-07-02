@@ -160,6 +160,7 @@ export interface InstagramConnection {
   access_token: string
   account_id: string
   username?: string
+  expires_at?: number // unix ms — long-lived Instagram Login token (~60 days)
 }
 
 export async function saveInstagramConnection(conn: InstagramConnection): Promise<void> {

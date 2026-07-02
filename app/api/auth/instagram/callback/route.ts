@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { saveInstagramConnection } from '@/lib/connections'
 import {
-  exchangeFacebookCodeForToken,
+  exchangeInstagramCodeForToken,
   exchangeForLongLivedToken,
-  findInstagramAccountConnection,
   getInstagramAppCredentials,
+  getInstagramProfile,
 } from '@/lib/instagram'
 import { getBaseUrl } from '@/lib/oauth'
+import { updateDoc } from '@/lib/drive-db'
 
 export async function GET(req: NextRequest) {
   const base = getBaseUrl(req)
@@ -20,31 +21,59 @@ export async function GET(req: NextRequest) {
   const { appId, appSecret } = getInstagramAppCredentials()
   if (!appId || !appSecret) {
     return NextResponse.redirect(
-      new URL(`/settings?ig_error=${encodeURIComponent('Instagram app not configured. Set FACEBOOK_APP_ID / FACEBOOK_APP_SECRET.')}`, req.url)
+      new URL(`/settings?ig_error=${encodeURIComponent('Instagram app not configured. Set INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET.')}`, req.url)
     )
   }
 
   const redirectUri = `${base}/api/auth/instagram/callback`
-  const shortToken = await exchangeFacebookCodeForToken({ code, redirectUri, appId, appSecret })
+  const shortToken = await exchangeInstagramCodeForToken({ code, redirectUri, appId, appSecret })
   if (!shortToken.access_token) {
-    return NextResponse.redirect(new URL(`/settings?ig_error=${encodeURIComponent(shortToken.error?.message ?? 'token_exchange_failed')}`, req.url))
+    const msg = shortToken.error?.message ?? shortToken.error_message ?? 'token_exchange_failed'
+    return NextResponse.redirect(new URL(`/settings?ig_error=${encodeURIComponent(msg)}`, req.url))
   }
 
-  const longToken = await exchangeForLongLivedToken({ accessToken: shortToken.access_token, appId, appSecret })
+  const longToken = await exchangeForLongLivedToken({ accessToken: shortToken.access_token, appSecret })
   const accessToken = longToken.access_token ?? shortToken.access_token
+  const expiresAt = longToken.expires_in ? Date.now() + longToken.expires_in * 1000 : undefined
 
-  const connection = await findInstagramAccountConnection(accessToken)
-  if (!connection) {
+  const profile = await getInstagramProfile(accessToken)
+  const accountId = profile.user_id ?? profile.id ?? String(shortToken.user_id ?? '')
+  if (!accountId) {
     return NextResponse.redirect(
-      new URL(`/settings?ig_error=${encodeURIComponent('No Instagram Business or Creator account found. Connect your Instagram account to a Facebook Page you manage, then try again.')}`, req.url)
+      new URL(`/settings?ig_error=${encodeURIComponent(profile.error?.message ?? 'Could not resolve the Instagram account for this login.')}`, req.url)
     )
   }
 
+  // (a) Encrypted cookie — posting/analytics UI (workspace-scoped).
   await saveInstagramConnection({
-    access_token: connection.accessToken,
-    account_id: connection.accountId,
-    username: connection.username,
+    access_token: accessToken,
+    account_id: accountId,
+    username: profile.username,
+    expires_at: expiresAt,
   })
+
+  // (b) DM engine store — webhooks fire with no cookies, so the DM automation
+  // reads tokens server-side from the Drive DB (same shape as triggerdm's
+  // storedTokens). Best-effort: a Drive hiccup must not break connecting.
+  try {
+    await updateDoc<Record<string, unknown>>('dm', {}, (db) => {
+      const stored = ((db.storedTokens as Record<string, unknown>) ?? {})
+      stored[`WORKSPACE_TOKEN:ig-${accountId}`] = {
+        token: accessToken,
+        meta: {
+          igUserId: accountId,
+          username: profile.username ?? null,
+          accountType: profile.account_type ?? null,
+          source: 'instagram_login',
+          expiresAt: expiresAt ?? null,
+        },
+        updatedAt: new Date().toISOString(),
+      }
+      return { ...db, storedTokens: stored }
+    })
+  } catch (e) {
+    console.error('[instagram] DM token dual-write failed:', e)
+  }
 
   return NextResponse.redirect(new URL('/settings?ig_connected=1', req.url))
 }

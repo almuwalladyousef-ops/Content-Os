@@ -132,7 +132,7 @@ function SettingsContent() {
 
   const redirectUris: { label: string; path: string; where: string }[] = [
     { label: 'Google', path: '/api/auth/callback', where: 'Google Cloud → Credentials → OAuth client → Authorized redirect URIs' },
-    { label: 'Instagram', path: '/api/auth/instagram/callback', where: 'Meta app → Facebook Login → Settings → Valid OAuth Redirect URIs' },
+    { label: 'Instagram', path: '/api/auth/instagram/callback', where: 'Meta app → Instagram → API setup with Instagram Login → Business login settings → Redirect URIs' },
     { label: 'TikTok', path: '/api/auth/tiktok/callback', where: 'TikTok app → Login Kit → Redirect URI' },
   ]
 

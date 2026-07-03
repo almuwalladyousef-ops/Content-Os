@@ -19,13 +19,25 @@ export async function GET() {
     getAccountsWithStoredTokens(),
   ])
 
+  // DM-engine tokens connected before workspace cookies existed (or whose
+  // cookie has since been cleared) aren't claimed by any workspace. Attach
+  // them to the active workspace so those accounts stay usable.
+  const claimedIgIds = new Set(withIg.map(w => w.igId).filter(Boolean))
+  const unclaimed = accounts.filter(a => !claimedIgIds.has(a.igId))
+
   const workspaces = withIg.map(w => {
-    const account = w.igId ? accounts.find(a => a.igId === w.igId) : null
+    let igId = w.igId
+    let igUsername = w.igUsername
+    if (!igId && w.id === state.activeId && unclaimed.length > 0) {
+      igId = unclaimed[0].igId
+      igUsername = unclaimed[0].username
+    }
+    const account = igId ? accounts.find(a => a.igId === igId) : null
     return {
       id: w.id,
       name: w.name,
-      igId: w.igId,
-      accountName: account?.name || (w.igUsername ? `@${w.igUsername}` : null),
+      igId,
+      accountName: account?.name || (igUsername ? `@${igUsername}` : null),
       connected: !!account,
       active: w.id === state.activeId,
     }

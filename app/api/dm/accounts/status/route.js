@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import axios from 'axios'
 import { getAccountsWithStoredTokens } from '@/lib/dm/accounts'
-import { getWorkspaces, getInstagramConnectionForWorkspace } from '@/lib/connections'
+import { getWorkspaces, getInstagramConnectionForWorkspace, getWorkspacesWithInstagram } from '@/lib/connections'
 
 const FACEBOOK_BASE = 'https://graph.facebook.com/v21.0'
 const INSTAGRAM_BASE = 'https://graph.instagram.com/v21.0'
@@ -30,11 +30,21 @@ export async function GET(req) {
     const workspace = state.workspaces.find(w => w.id === workspaceId)
     if (!workspace) return NextResponse.json([])
 
-    const ig = await getInstagramConnectionForWorkspace(workspaceId)
-    const accounts = await getAccountsWithStoredTokens()
-    const account = ig ? accounts.find(a => a.igId === ig.accountId) : null
+    const [ig, accounts, withIg] = await Promise.all([
+      getInstagramConnectionForWorkspace(workspaceId),
+      getAccountsWithStoredTokens(),
+      getWorkspacesWithInstagram(),
+    ])
+    let account = ig ? accounts.find(a => a.igId === ig.accountId) : null
 
-    if (!ig || !account) {
+    // Same fallback as /api/dm/workspaces: a stored DM-engine token no
+    // workspace cookie claims belongs to the active workspace.
+    if (!account && !ig && workspace.id === state.activeId) {
+      const claimed = new Set(withIg.map(w => w.igId).filter(Boolean))
+      account = accounts.find(a => !claimed.has(a.igId)) || null
+    }
+
+    if (!account) {
       return NextResponse.json([{
         name: workspace.name,
         igId: ig?.accountId || null,

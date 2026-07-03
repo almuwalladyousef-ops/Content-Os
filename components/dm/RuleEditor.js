@@ -171,16 +171,23 @@ export default function RuleEditor({ initial }) {
     set('commentReplies', (rule.commentReplies || []).filter((_, i) => i !== index))
   }
 
+  function fail(message) {
+    setError(message)
+    requestAnimationFrame(() => {
+      document.getElementById('rule-editor-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
+
   async function save() {
-    if (!rule.name) return setError('Give this rule a name.')
-    if (!rule.workspaceId) return setError('Select a workspace before creating a rule.')
-    if (!rule.igId) return setError('Connect an Instagram account to this workspace before creating rules.')
+    if (!rule.name) return fail('Give this rule a name.')
+    if (!rule.workspaceId) return fail('Select a workspace in the sidebar before creating a rule.')
+    if (!rule.igId) return fail('Connect an Instagram account to this workspace before creating rules.')
     if (!rule.anyComment && rule.keywords.length === 0 && !rule.dmKeywords?.length) {
-      return setError('Add at least one keyword, enable "Any comment", or add DM keywords.')
+      return fail('Add at least one keyword, enable "Any comment", or add DM keywords.')
     }
-    if (rule.messages.length === 0) return setError('Add at least one message.')
+    if (rule.messages.length === 0) return fail('Add at least one message.')
     if (!rule.applyToAll && rule.targetReels.length === 0 && !rule.dmKeywords?.length) {
-      return setError('Select at least one reel, enable Apply to all, or add DM keywords.')
+      return fail('Select at least one reel, enable Apply to all, or add DM keywords.')
     }
 
     setSaving(true)
@@ -209,7 +216,8 @@ export default function RuleEditor({ initial }) {
     if (res.ok) {
       router.push('/dm/rules')
     } else {
-      setError('Failed to save. Try again.')
+      const data = await res.json().catch(() => null)
+      fail(data?.error ? `Failed to save: ${data.error}` : 'Failed to save. Try again.')
       setSaving(false)
     }
   }
@@ -281,6 +289,13 @@ export default function RuleEditor({ initial }) {
         <div className="editor-meta">
           {rule.createdAt && <span>Created {new Date(rule.createdAt).toLocaleDateString()}</span>}
           {rule.updatedAt && <span>· Updated {new Date(rule.updatedAt).toLocaleDateString()}</span>}
+        </div>
+      )}
+
+      {workspaces.length > 0 && !rule.igId && (
+        <div className="overlap-warning">
+          No Instagram account is connected to {selectedWorkspace?.name ? <strong>{selectedWorkspace.name}</strong> : 'this workspace'} —
+          rules can't be saved until one is. <a href="/api/auth/instagram/connect">Connect Instagram →</a>
         </div>
       )}
 
@@ -550,7 +565,7 @@ export default function RuleEditor({ initial }) {
         />
       </Section>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p id="rule-editor-error" className="error">{error}</p>}
 
       <div className="editor-actions">
         <button className="btn-save" onClick={save} disabled={saving}>

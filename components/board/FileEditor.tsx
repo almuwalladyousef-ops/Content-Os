@@ -2,16 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ACCOUNT_META, BodyBlock, Card, CardStatus, FORMAT_META, NEXT,
-  apiCreate, apiDelete, apiWrite, openInObsidian, parentDir, parseBlocks,
-  safeMarkdownFileName, serializeBlocks, statusLabel, writeFM,
+  ACCOUNT_META, Card, CardStatus, FORMAT_META, NEXT,
+  apiCreate, apiDelete, apiWrite, openInObsidian, parentDir,
+  safeMarkdownFileName, statusLabel, writeFM,
 } from '@/lib/board/model'
 
 /**
- * Full file editor — the native version of the old board's File Editor:
- * every `## section` is its own block, with the file-setup panel (name,
- * source, brand, format, film/post date+time, finished link) and the full
- * action set (save / move to next / open in Obsidian / archive / delete).
+ * File editor — centered, resizable (drag the corner or maximize), with one
+ * continuous writing area for the whole note plus the file-setup panel
+ * (name, source, brand, format, film/post date+time, finished link) and the
+ * full action set (save / move next / open in Obsidian / archive / delete).
  */
 export default function FileEditor({ file, onClose, onMove, onSaved, onError, onDeleted }: {
   file: Card
@@ -21,9 +21,16 @@ export default function FileEditor({ file, onClose, onMove, onSaved, onError, on
   onError: (msg: string) => void
   onDeleted: () => void
 }) {
-  const parsed = useMemo(() => parseBlocks(file.body), [file.body])
-  const [title, setTitle] = useState(parsed.title ?? file.title)
-  const [blocks, setBlocks] = useState<BodyBlock[]>(parsed.blocks)
+  const initial = useMemo(() => {
+    const h1 = file.body.match(/^\s*#\s+(.+)\r?\n?/)
+    return {
+      title: h1 ? h1[1].trim() : file.title,
+      text: h1 ? file.body.slice(h1[0].length).replace(/^\n+/, '') : file.body,
+    }
+  }, [file])
+
+  const [title, setTitle] = useState(initial.title)
+  const [text, setText] = useState(initial.text)
   const [fileName, setFileName] = useState(file.name.replace(/\.md$/i, ''))
   const [source, setSource] = useState(file.data.source ?? '')
   const [account, setAccount] = useState(file.data.account ?? file.account ?? '')
@@ -35,12 +42,15 @@ export default function FileEditor({ file, onClose, onMove, onSaved, onError, on
   const [proof, setProof] = useState(file.data.proof ?? '')
   const [busy, setBusy] = useState(false)
   const [setupOpen, setSetupOpen] = useState(true)
+  const [maxed, setMaxed] = useState(false)
 
-  const body = useMemo(() => serializeBlocks(title, blocks), [title, blocks])
+  const body = useMemo(
+    () => (title ? `# ${title}\n\n${text.replace(/^\n+/, '')}` : text),
+    [title, text],
+  )
   const counts = useMemo(() => ({
     words: (body.match(/\S+/g) || []).length,
     chars: body.length,
-    lines: body.split('\n').length,
   }), [body])
 
   const next = file.status ? NEXT[file.status] : undefined
@@ -53,11 +63,7 @@ export default function FileEditor({ file, onClose, onMove, onSaved, onError, on
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, blocks, fileName, source, account, format, filmDate, filmTime, postDate, postTime, proof])
-
-  function setBlock(i: number, patch: Partial<BodyBlock>) {
-    setBlocks(bs => bs.map((b, k) => (k === i ? { ...b, ...patch } : b)))
-  }
+  }, [title, text, fileName, source, account, format, filmDate, filmTime, postDate, postTime, proof])
 
   async function save() {
     setBusy(true)
@@ -74,7 +80,7 @@ export default function FileEditor({ file, onClose, onMove, onSaved, onError, on
         post_date: postDate || null,
         post_time: postTime || null,
       }
-      const content = writeFM(data, body)
+      const content = writeFM(data, body.endsWith('\n') ? body : body + '\n')
       const newName = safeMarkdownFileName(fileName)
       if (newName && newName !== file.name) {
         const dir = parentDir(file.path)
@@ -98,22 +104,15 @@ export default function FileEditor({ file, onClose, onMove, onSaved, onError, on
     catch (e) { onError('Delete failed: ' + (e as Error).message); setBusy(false) }
   }
 
-  const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 5 }
-  const panel: React.CSSProperties = {
-    background: 'var(--surface)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius)',
-    padding: 'var(--pad-sm)',
-    display: 'flex', flexDirection: 'column', gap: 12,
-  }
+  const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 }
 
   return (
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 100,
-        background: 'oklch(0 0 0 / 0.6)',
+        background: 'oklch(0 0 0 / 0.55)',
         backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
-        display: 'grid', placeItems: 'stretch', padding: 18,
+        display: 'grid', placeItems: 'center', padding: 16,
       }}
       onClick={onClose}
     >
@@ -126,116 +125,85 @@ export default function FileEditor({ file, onClose, onMove, onSaved, onError, on
           borderRadius: 'var(--radius)',
           boxShadow: '0 30px 80px oklch(0 0 0 / 0.55)',
           display: 'flex', flexDirection: 'column',
-          overflow: 'hidden', height: '100%',
+          overflow: 'hidden',
+          // Centered window: drag the bottom-right corner to resize, or maximize.
+          resize: maxed ? 'none' : 'both',
+          width: maxed ? '100%' : 'min(860px, 94vw)',
+          height: maxed ? '100%' : 'min(620px, 88vh)',
+          minWidth: 480, minHeight: 340,
+          maxWidth: '100%', maxHeight: '100%',
         }}
       >
         {/* Header */}
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 14,
-          padding: '12px 18px', borderBottom: '1px solid var(--hairline)', flexWrap: 'wrap',
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 14px', borderBottom: '1px solid var(--hairline)', flexWrap: 'wrap',
         }}>
           <span className="micro" style={{ color: 'var(--accent)' }}>{statusLabel(file.status)}</span>
-          <span className="mono mute" style={{ fontSize: 10.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 120 }}>
+          <span className="mono mute" style={{ fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 100 }}>
             {file.path}
           </span>
-          <span className="mono dim" style={{ fontSize: 10.5 }}>
-            {counts.words} words · {counts.chars} chars · {counts.lines} lines
+          <span className="mono dim" style={{ fontSize: 10 }}>
+            {counts.words}w · {counts.chars}c
           </span>
           <button className="btn tiny ghost" onClick={() => setSetupOpen(v => !v)}>
-            {setupOpen ? 'Hide setup' : 'Show setup'}
+            {setupOpen ? 'Hide' : 'Setup'}
+          </button>
+          <button className="btn tiny ghost" title={maxed ? 'Restore size' : 'Maximize'} onClick={() => setMaxed(v => !v)}>
+            {maxed ? '⤡' : '⤢'}
           </button>
           <button className="btn tiny ghost" onClick={onClose}>✕</button>
         </div>
 
         {/* Body */}
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          {/* Blocks column */}
-          <div className="scroll" style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 'var(--pad)' }}>
-            <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <input
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="Title"
-                style={{
-                  fontSize: 24, fontWeight: 500, letterSpacing: '-0.01em',
-                  background: 'transparent', border: 'none', outline: 'none',
-                  color: 'var(--text)', width: '100%', padding: '4px 2px',
-                }}
-              />
-
-              {blocks.map((b, i) => (
-                <div key={i} style={{ ...panel, gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {b.heading == null ? (
-                      <span className="micro" style={{ flex: 1 }}>INTRO</span>
-                    ) : (
-                      <input
-                        value={b.heading}
-                        onChange={e => setBlock(i, { heading: e.target.value })}
-                        style={{
-                          flex: 1, fontSize: 13.5, fontWeight: 600,
-                          background: 'transparent', border: 'none', outline: 'none',
-                          color: 'var(--text)', padding: 0,
-                        }}
-                      />
-                    )}
-                    <button
-                      className="btn tiny ghost"
-                      title="Remove section"
-                      onClick={() => setBlocks(bs => bs.filter((_, k) => k !== i))}
-                    >✕</button>
-                  </div>
-                  <AutoTextarea
-                    value={b.content}
-                    onChange={v => setBlock(i, { content: v })}
-                    placeholder="Write…"
-                  />
-                </div>
-              ))}
-
-              <button
-                className="dim"
-                onClick={() => setBlocks(bs => [...bs, { heading: 'New Section', content: '' }])}
-                style={{ padding: '10px', fontSize: 12.5, borderRadius: 'var(--radius-sm)', border: '1px dashed var(--hairline)' }}
-              >
-                + Add section
-              </button>
-            </div>
+          {/* One continuous writing area */}
+          <div className="scroll" style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '14px 18px' }}>
+            <input
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Title"
+              style={{
+                fontSize: 19, fontWeight: 550, letterSpacing: '-0.01em',
+                background: 'transparent', border: 'none', outline: 'none',
+                color: 'var(--text)', width: '100%', padding: '0 0 10px',
+              }}
+            />
+            <AutoTextarea value={text} onChange={setText} placeholder="Write…" />
           </div>
 
           {/* File setup / actions */}
           {setupOpen && (
             <div className="scroll" style={{
-              width: 300, flexShrink: 0, overflowY: 'auto',
+              width: 240, flexShrink: 0, overflowY: 'auto',
               borderLeft: '1px solid var(--hairline)',
-              padding: 'var(--pad-sm)', display: 'flex', flexDirection: 'column', gap: 14,
+              padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
             }}>
-              <div className="micro">FILE SETUP</div>
-
               <div style={field}>
                 <label className="micro" style={{ color: 'var(--text-mute)' }}>File name</label>
-                <input className="input" value={fileName} onChange={e => setFileName(e.target.value)} />
+                <input className="input" value={fileName} onChange={e => setFileName(e.target.value)} style={{ padding: '6px 10px', fontSize: 12 }} />
               </div>
 
               <div style={field}>
                 <label className="micro" style={{ color: 'var(--text-mute)' }}>Source</label>
-                <input className="input" value={source ?? ''} onChange={e => setSource(e.target.value)} placeholder="Link or source" />
+                <input className="input" value={source ?? ''} onChange={e => setSource(e.target.value)} placeholder="Link or source" style={{ padding: '6px 10px', fontSize: 12 }} />
               </div>
 
-              <div style={field}>
-                <label className="micro" style={{ color: 'var(--text-mute)' }}>Brand</label>
-                <select className="input" value={account ?? ''} onChange={e => setAccount(e.target.value)}>
-                  <option value="">—</option>
-                  {ACCOUNT_META.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
-                </select>
-              </div>
-
-              <div style={field}>
-                <label className="micro" style={{ color: 'var(--text-mute)' }}>Format</label>
-                <select className="input" value={format ?? ''} onChange={e => setFormat(e.target.value)}>
-                  <option value="">—</option>
-                  {FORMAT_META.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div style={field}>
+                  <label className="micro" style={{ color: 'var(--text-mute)' }}>Brand</label>
+                  <select className="input" value={account ?? ''} onChange={e => setAccount(e.target.value)} style={{ padding: '6px 8px', fontSize: 12 }}>
+                    <option value="">—</option>
+                    {ACCOUNT_META.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+                  </select>
+                </div>
+                <div style={field}>
+                  <label className="micro" style={{ color: 'var(--text-mute)' }}>Format</label>
+                  <select className="input" value={format ?? ''} onChange={e => setFormat(e.target.value)} style={{ padding: '6px 8px', fontSize: 12 }}>
+                    <option value="">—</option>
+                    {FORMAT_META.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                  </select>
+                </div>
               </div>
 
               <DateTimeField
@@ -253,11 +221,10 @@ export default function FileEditor({ file, onClose, onMove, onSaved, onError, on
 
               <div style={field}>
                 <label className="micro" style={{ color: 'var(--text-mute)' }}>Finished</label>
-                <input className="input" value={proof ?? ''} onChange={e => setProof(e.target.value)} placeholder="Finished link" />
+                <input className="input" value={proof ?? ''} onChange={e => setProof(e.target.value)} placeholder="Finished link" style={{ padding: '6px 10px', fontSize: 12 }} />
               </div>
 
-              <div className="micro" style={{ marginTop: 6 }}>ACTIONS</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 'auto', paddingTop: 8 }}>
                 <button className="btn primary" disabled={busy} onClick={save}>Save file</button>
                 {next && (
                   <button className="btn" disabled={busy} onClick={() => onMove(file.path, next)}>
@@ -268,11 +235,11 @@ export default function FileEditor({ file, onClose, onMove, onSaved, onError, on
                   Open in Obsidian
                 </button>
                 {file.status !== 'archive' ? (
-                  <button className="btn ghost" disabled={busy} onClick={() => onMove(file.path, 'archive')}>Archive file</button>
+                  <button className="btn ghost" disabled={busy} onClick={() => onMove(file.path, 'archive')}>Archive</button>
                 ) : (
                   <button className="btn" disabled={busy} onClick={() => onMove(file.path, 'script')}>Restore to Script</button>
                 )}
-                <button className="btn danger" disabled={busy} onClick={remove}>Delete file</button>
+                <button className="btn danger" disabled={busy} onClick={remove}>Delete</button>
               </div>
             </div>
           )}
@@ -292,15 +259,15 @@ function DateTimeField({ label, dotColor, date, time, onDate, onTime, onClear }:
   onClear: () => void
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <label className="micro" style={{ color: 'var(--text-mute)', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ width: 7, height: 7, borderRadius: 999, background: dotColor, boxShadow: `0 0 6px ${dotColor}` }} />
+        <span style={{ width: 6, height: 6, borderRadius: 999, background: dotColor, boxShadow: `0 0 6px ${dotColor}` }} />
         {label}
       </label>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input type="date" className="input" value={date} onChange={e => onDate(e.target.value)} style={{ flex: 1.4, colorScheme: 'dark' }} />
-        <input type="time" className="input" value={time} onChange={e => onTime(e.target.value)} style={{ flex: 1, colorScheme: 'dark' }} />
-        <button className="btn tiny ghost" title={`Clear ${label.toLowerCase()}`} onClick={onClear}>✕</button>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <input type="date" className="input" value={date} onChange={e => onDate(e.target.value)} style={{ flex: 1.4, minWidth: 0, colorScheme: 'dark', padding: '5px 7px', fontSize: 11.5 }} />
+        <input type="time" className="input" value={time} onChange={e => onTime(e.target.value)} style={{ flex: 1, minWidth: 0, colorScheme: 'dark', padding: '5px 7px', fontSize: 11.5 }} />
+        <button className="btn tiny ghost" title={`Clear ${label.toLowerCase()}`} onClick={onClear} style={{ padding: '2px 7px' }}>✕</button>
       </div>
     </div>
   )
@@ -325,12 +292,12 @@ function AutoTextarea({ value, onChange, placeholder }: {
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       spellCheck={false}
-      rows={1}
+      rows={6}
       style={{
         width: '100%', resize: 'none', overflow: 'hidden',
         background: 'transparent', border: 'none', outline: 'none',
         color: 'var(--text-2)', fontFamily: 'var(--font-sans)',
-        fontSize: 13.5, lineHeight: 1.7, minHeight: 24,
+        fontSize: 13, lineHeight: 1.65, minHeight: 160,
       }}
     />
   )

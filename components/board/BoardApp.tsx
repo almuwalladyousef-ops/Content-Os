@@ -268,6 +268,7 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
   dragPath: React.MutableRefObject<string | null>
 }) {
   const [over, setOver] = useState<string | null>(null)
+  const [draggingPath, setDraggingPath] = useState<string | null>(null)
 
   const byStatus: Record<string, Card[]> = {}
   BOARD_COLUMNS.forEach(c => { byStatus[c.key] = [] })
@@ -280,8 +281,13 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
       {BOARD_COLUMNS.map(({ key, label, color }) => (
         <div
           key={key}
-          onDragOver={e => { e.preventDefault(); setOver(key) }}
-          onDragLeave={() => setOver(o => (o === key ? null : o))}
+          onDragOver={e => { e.preventDefault(); if (over !== key) setOver(key) }}
+          onDragLeave={e => {
+            // Ignore leave events fired when moving between the column's own
+            // children — only clear when actually exiting the column.
+            if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return
+            setOver(o => (o === key ? null : o))
+          }}
           onDrop={e => {
             e.preventDefault(); setOver(null)
             if (dragPath.current) onDrop(dragPath.current, key)
@@ -289,18 +295,16 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
           style={{
             flex: '1 1 0', minWidth: 0,
             display: 'flex', flexDirection: 'column', gap: 10,
-            borderRadius: 'var(--radius)',
-            outline: over === key ? '1px dashed var(--accent)' : 'none',
-            outlineOffset: 4,
           }}
         >
           {/* Column header pill */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 7,
             padding: '7px 11px',
-            background: 'var(--bg-2)',
-            border: '1px solid var(--hairline)',
+            background: over === key ? 'var(--accent-dim)' : 'var(--bg-2)',
+            border: `1px solid ${over === key ? 'oklch(0.80 0.16 80 / 0.45)' : 'var(--hairline)'}`,
             borderRadius: 999,
+            transition: 'background 120ms ease, border-color 120ms ease',
           }}>
             <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0, background: color, boxShadow: `0 0 8px ${color}` }} />
             <span style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
@@ -312,27 +316,22 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
           {/* Free-floating cards */}
           <div className="scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', flex: 1, minHeight: 40, paddingRight: 5, marginRight: -5 }}>
             {byStatus[key].map(f => (
-              <div
+              <BoardCard
                 key={f.path}
-                draggable
-                onDragStart={() => { dragPath.current = f.path }}
-                onDragEnd={() => { dragPath.current = null }}
+                f={f}
+                dimmed={draggingPath === f.path}
                 onClick={() => onSelect(f)}
-                style={{
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '10px 11px',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 14px oklch(0 0 0 / 0.18)',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-strong)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)' }}
-              >
-                <div style={{ fontSize: 12.5, lineHeight: 1.4, fontWeight: 450 }}>{f.title}</div>
-                <CardTags f={f} />
-              </div>
+                onDragStart={() => { dragPath.current = f.path; setDraggingPath(f.path) }}
+                onDragEnd={() => { dragPath.current = null; setDraggingPath(null) }}
+              />
             ))}
+            {over === key && draggingPath && (
+              <div style={{
+                height: 44, borderRadius: 'var(--radius-sm)', flexShrink: 0,
+                border: '1px dashed oklch(0.80 0.16 80 / 0.5)',
+                background: 'var(--accent-dim)',
+              }} />
+            )}
             <button
               onClick={() => onQuickAdd(key)}
               title={`Create in ${label}`}
@@ -357,6 +356,39 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+/** The one card style — used by the board columns and the research buckets. */
+function BoardCard({ f, onClick, onDragStart, onDragEnd, dimmed }: {
+  f: Card
+  onClick: () => void
+  onDragStart?: () => void
+  onDragEnd?: () => void
+  dimmed?: boolean
+}) {
+  return (
+    <div
+      draggable={!!onDragStart}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={onClick}
+      style={{
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '10px 11px',
+        cursor: 'pointer',
+        boxShadow: '0 4px 14px oklch(0 0 0 / 0.18)',
+        opacity: dimmed ? 0.35 : 1,
+        transition: 'opacity 120ms ease',
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-strong)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)' }}
+    >
+      <div style={{ fontSize: 12.5, lineHeight: 1.4, fontWeight: 450 }}>{f.title}</div>
+      <CardTags f={f} />
     </div>
   )
 }
@@ -397,21 +429,29 @@ function Research({ cards, onSelect, onChanged, onError }: {
     <div className="scroll" style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
       <AccountsShelf accounts={accounts} onSelect={onSelect} onChanged={onChanged} onError={onError} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+      {/* Buckets laid out like the board: a header pill + free-floating cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12, alignItems: 'start' }}>
         {RESEARCH_BUCKETS.map(bucket => {
           const items = cards.filter(f => (f.rtype || 'daily') === bucket.key)
           return (
-            <div key={bucket.key} style={{ ...card, padding: 'var(--pad-sm)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <span className="h3">{bucket.label}</span>
-                  <span className="mono dim" style={{ fontSize: 11 }}>{items.length}</span>
-                </div>
-                <div className="dim" style={{ fontSize: 11.5, marginTop: 3 }}>{bucket.purpose}</div>
+            <div key={bucket.key} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+              <div
+                title={bucket.purpose}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '7px 11px',
+                  background: 'var(--bg-2)',
+                  border: '1px solid var(--hairline)',
+                  borderRadius: 999,
+                }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0, background: 'var(--accent)', boxShadow: '0 0 8px var(--accent-glow)' }} />
+                <span style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bucket.label}</span>
+                <span className="mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--text-mute)' }}>{items.length}</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {items.map(f => <ResearchCard key={f.path} f={f} onSelect={onSelect} />)}
-                {!items.length && <span className="mute" style={{ fontSize: 12 }}>Empty</span>}
+                {items.map(f => <BoardCard key={f.path} f={f} onClick={() => onSelect(f)} />)}
+                {!items.length && <span className="mute" style={{ fontSize: 12, padding: '2px 6px' }}>Empty</span>}
               </div>
             </div>
           )
@@ -650,22 +690,6 @@ function AddAccountModal({ defaultFor, onClose, onCreated, onError }: {
   )
 }
 
-function ResearchCard({ f, onSelect }: { f: Card; onSelect: (f: Card) => void }) {
-  return (
-    <div
-      onClick={() => onSelect(f)}
-      style={{
-        background: 'var(--surface-2)', border: '1px solid var(--hairline)',
-        borderRadius: 'var(--radius-sm)', padding: '10px 11px', cursor: 'pointer',
-      }}
-      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-strong)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--hairline)' }}
-    >
-      <div style={{ fontSize: 12.5, lineHeight: 1.4 }}>{f.title}</div>
-      <CardTags f={f} />
-    </div>
-  )
-}
 
 // ── Archive ──────────────────────────────────────────────────────────────────
 

@@ -120,7 +120,7 @@ export default function RulesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Rules</h1>
+        <h1>DM Automation</h1>
         <Link href="/dm/rules/new" className="btn-primary">+ New Rule</Link>
       </div>
 

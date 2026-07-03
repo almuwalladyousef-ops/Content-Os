@@ -226,7 +226,9 @@ export function isResearchItem(f: Card): boolean {
 
 function getTitle(name: string, body: string, data: Record<string, string | null>): string {
   if (data.summary) return data.summary
-  const h1 = body && body.match(/^#+\s+(.+)$/m)
+  // Only a real H1 counts as a title — otherwise section headings like
+  // "## Connected To" leak in as card titles.
+  const h1 = body && body.match(/^#\s+(.+)$/m)
   if (h1) return h1[1].replace(/\*\*/g, '').trim()
   return name.replace(/^\(C\)\s*/, '').replace(/^[\d\s]+/, '').replace(/\.md$/, '').trim()
 }
@@ -451,4 +453,38 @@ export const ymd = (d: Date) =>
 export function openInObsidian(path: string) {
   const fp = `01 Content OS/${path}`
   window.location.href = `obsidian://open?vault=${encodeURIComponent('Obsidian Vault')}&file=${encodeURIComponent(fp)}`
+}
+
+// ── Account notes (Research → Accounts) — same files the old board created ──
+
+export function buildAccountTemplate(opts: {
+  name: string
+  link?: string
+  accountFor: string[]
+  format?: string
+}): string {
+  const { name, link = '', format = '' } = opts
+  const accountFor = opts.accountFor.join(', ')
+  const links = [
+    wiki(CONTENT_OS_HUB, 'Content OS'),
+    ...opts.accountFor.filter(Boolean).map(brandBrainLink),
+  ].join('\n')
+  const fm: Record<string, unknown> = {
+    node_type: 'Note', summary: name, status: 'research',
+    account_name: name, account_link: link, account_for: accountFor,
+    ...(format && { account_format: format }),
+    source: link || null,
+  }
+  const body = `# ${name}\n\n## Account Link\n\n${link}\n\n## Useful For\n\n${accountFor}\n\n## Graph Links\n\n${links}\n\n## General Format\n\n${format || 'General'}\n\n## Notes\n\n`
+  return writeFM(fm, body)
+}
+
+export const accountFilePath = (name: string) => `01 Research/00 Accounts/${toSlug(name)}.md`
+
+/** Bulk lines: "name | link | useful-for | format" (as in the old board). */
+export function parseBulkAccounts(text: string) {
+  return text.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+    const [name = '', link = '', accountFor = '', format = ''] = line.split('|').map(p => p.trim())
+    return { name, link, accountFor, format }
+  }).filter(a => a.name)
 }

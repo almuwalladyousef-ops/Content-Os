@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ACCOUNT_META, BOARD_COLUMNS, Card, CardStatus, FORMAT_META,
-  RESEARCH_BUCKETS, ResearchBucket, accountForList, accountLabel, apiCreate,
-  apiDelete, apiScan, apiWrite, buildFilePath, buildTemplate, enrich,
-  formatLabel, graphLinksFor, isContent, isResearchItem, pathForCard,
-  statusLabel, toSlug, withGraphLinks, writeFM, isHubFile,
+  RESEARCH_BUCKETS, ResearchBucket, accountFilePath, accountForList,
+  accountLabel, apiCreate, apiDelete, apiScan, apiWrite, buildAccountTemplate,
+  buildFilePath, buildTemplate, enrich, formatLabel, graphLinksFor, isContent,
+  isResearchItem, parseBulkAccounts, pathForCard, statusLabel, toSlug,
+  withGraphLinks, writeFM, isHubFile,
 } from '@/lib/board/model'
 import FileEditor from './FileEditor'
 import CalendarView from './CalendarView'
@@ -157,7 +158,6 @@ export default function BoardApp() {
         <div style={{
           display: 'flex', gap: 2, padding: 3,
           background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--hairline)',
-          margin: '0 auto',
         }}>
           {(['board', 'calendar', 'research', 'archive'] as View[]).map(v => (
             <button
@@ -176,7 +176,7 @@ export default function BoardApp() {
             </button>
           ))}
         </div>
-        <button className="btn primary" onClick={() => setCreating(view === 'research' ? 'research' : 'script')}>
+        <button className="btn primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating(view === 'research' ? 'research' : 'script')}>
           + New card
         </button>
       </div>
@@ -208,7 +208,14 @@ export default function BoardApp() {
       {view === 'calendar' && (
         <CalendarView files={files.filter(f => !isHubFile(f))} onSelect={setSel} onReschedule={saveDate} />
       )}
-      {view === 'research' && <Research cards={researchCards} onSelect={setSel} />}
+      {view === 'research' && (
+        <Research
+          cards={researchCards}
+          onSelect={setSel}
+          onChanged={async (msg) => { say(msg); await load() }}
+          onError={msg => say(msg, true)}
+        />
+      )}
       {view === 'archive' && <Archive cards={archivedCards} onSelect={setSel} onRestore={p => moveCard(p, 'script')} />}
 
       {/* Modals + toast */}
@@ -303,7 +310,7 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
           </div>
 
           {/* Free-floating cards */}
-          <div className="scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', flex: 1, minHeight: 40 }}>
+          <div className="scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', flex: 1, minHeight: 40, paddingRight: 5, marginRight: -5 }}>
             {byStatus[key].map(f => (
               <div
                 key={f.path}
@@ -328,8 +335,22 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
             ))}
             <button
               onClick={() => onQuickAdd(key)}
-              className="mute"
-              style={{ padding: '7px 4px', fontSize: 11.5, borderRadius: 8, border: '1px dashed var(--hairline)', width: '100%' }}
+              title={`Create in ${label}`}
+              style={{
+                padding: '7px 4px', fontSize: 12, borderRadius: 8, width: '100%',
+                color: 'var(--text-mute)', border: '1px dashed transparent',
+                transition: 'all 120ms ease',
+              }}
+              onMouseEnter={e => {
+                const el = e.currentTarget as HTMLButtonElement
+                el.style.borderColor = 'var(--hairline)'
+                el.style.color = 'var(--text-dim)'
+              }}
+              onMouseLeave={e => {
+                const el = e.currentTarget as HTMLButtonElement
+                el.style.borderColor = 'transparent'
+                el.style.color = 'var(--text-mute)'
+              }}
             >
               +
             </button>
@@ -365,11 +386,16 @@ function Tag({ children, accent }: { children: React.ReactNode; accent?: boolean
 
 // ── Research ─────────────────────────────────────────────────────────────────
 
-function Research({ cards, onSelect }: { cards: Card[]; onSelect: (f: Card) => void }) {
+function Research({ cards, onSelect, onChanged, onError }: {
+  cards: Card[]
+  onSelect: (f: Card) => void
+  onChanged: (msg: string) => void
+  onError: (msg: string) => void
+}) {
   const accounts = cards.filter(f => f.rtype === 'accounts')
   return (
     <div className="scroll" style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <AccountsShelf accounts={accounts} onSelect={onSelect} />
+      <AccountsShelf accounts={accounts} onSelect={onSelect} onChanged={onChanged} onError={onError} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
         {RESEARCH_BUCKETS.map(bucket => {
@@ -399,8 +425,14 @@ function Research({ cards, onSelect }: { cards: Card[]; onSelect: (f: Card) => v
  * Accounts to study — profile-style cards grouped by which of your brands
  * they're useful for, with the handle, link, and format at a glance.
  */
-function AccountsShelf({ accounts, onSelect }: { accounts: Card[]; onSelect: (f: Card) => void }) {
+function AccountsShelf({ accounts, onSelect, onChanged, onError }: {
+  accounts: Card[]
+  onSelect: (f: Card) => void
+  onChanged: (msg: string) => void
+  onError: (msg: string) => void
+}) {
   const [filter, setFilter] = useState('all')
+  const [adding, setAdding] = useState(false)
   const shown = filter === 'all' ? accounts : accounts.filter(f => accountForList(f).includes(filter))
 
   return (
@@ -408,6 +440,7 @@ function AccountsShelf({ accounts, onSelect }: { accounts: Card[]; onSelect: (f:
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span className="h3">Accounts to study</span>
         <span className="mono dim" style={{ fontSize: 11 }}>{shown.length}</span>
+        <button className="btn tiny" onClick={() => setAdding(true)}>+ Add account</button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           {[{ key: 'all', label: 'All' }, ...ACCOUNT_META].map(a => {
             const on = filter === a.key
@@ -486,7 +519,134 @@ function AccountsShelf({ accounts, onSelect }: { accounts: Card[]; onSelect: (f:
           No accounts saved{filter !== 'all' ? ` for ${accountLabel(filter)}` : ''} yet.
         </div>
       )}
+
+      {adding && (
+        <AddAccountModal
+          defaultFor={filter !== 'all' ? filter : 'traceback'}
+          onClose={() => setAdding(false)}
+          onCreated={(msg) => { setAdding(false); onChanged(msg) }}
+          onError={onError}
+        />
+      )}
     </div>
+  )
+}
+
+/** Same account files the old board created — single form or bulk lines. */
+function AddAccountModal({ defaultFor, onClose, onCreated, onError }: {
+  defaultFor: string
+  onClose: () => void
+  onCreated: (msg: string) => void
+  onError: (msg: string) => void
+}) {
+  const [bulk, setBulk] = useState(false)
+  const [name, setName] = useState('')
+  const [link, setLink] = useState('')
+  const [forKeys, setForKeys] = useState<string[]>([defaultFor])
+  const [format, setFormat] = useState('')
+  const [bulkText, setBulkText] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const toggleFor = (key: string) =>
+    setForKeys(ks => (ks.includes(key) ? ks.filter(k => k !== key) : [...ks, key]))
+
+  const create = async () => {
+    setBusy(true)
+    try {
+      if (bulk) {
+        const rows = parseBulkAccounts(bulkText)
+        if (!rows.length) throw new Error('No accounts to add — one per line: name | link | useful-for | format')
+        for (const row of rows) {
+          const accountFor = row.accountFor
+            ? row.accountFor.split(',').map(s => s.trim()).filter(Boolean)
+            : [defaultFor]
+          await apiCreate(accountFilePath(row.name), buildAccountTemplate({
+            name: row.name, link: row.link, accountFor, format: row.format,
+          }))
+        }
+        onCreated(`Added ${rows.length} account${rows.length > 1 ? 's' : ''}`)
+      } else {
+        if (!name.trim()) throw new Error('Give the account a name')
+        await apiCreate(accountFilePath(name.trim()), buildAccountTemplate({
+          name: name.trim(), link: link.trim(), accountFor: forKeys.length ? forKeys : [defaultFor], format,
+        }))
+        onCreated('Account added')
+      }
+    } catch (e) {
+      onError('Add failed: ' + (e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6 }
+
+  return (
+    <Modal onClose={onClose} width={480}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="h2">Add account</div>
+        <button className="btn tiny ghost" onClick={() => setBulk(v => !v)}>
+          {bulk ? 'Single' : 'Bulk'}
+        </button>
+        <button className="btn tiny ghost" style={{ marginLeft: 'auto' }} onClick={onClose}>✕</button>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
+        {bulk ? (
+          <div style={field}>
+            <label className="micro">One per line: name | link | useful-for | format</label>
+            <textarea
+              className="textarea" rows={6} autoFocus
+              value={bulkText} onChange={e => setBulkText(e.target.value)}
+              placeholder={'hormozi | https://instagram.com/hormozi | motivational | short-form\nfireship | https://youtube.com/@fireship | traceback'}
+            />
+          </div>
+        ) : (
+          <>
+            <div style={field}>
+              <label className="micro">Account name</label>
+              <input className="input" autoFocus value={name} onChange={e => setName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') create() }} placeholder="@handle or name" />
+            </div>
+            <div style={field}>
+              <label className="micro">Link</label>
+              <input className="input" value={link} onChange={e => setLink(e.target.value)} placeholder="https://…" />
+            </div>
+            <div style={field}>
+              <label className="micro">Useful for</label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {ACCOUNT_META.map(a => {
+                  const on = forKeys.includes(a.key)
+                  return (
+                    <button
+                      key={a.key}
+                      onClick={() => toggleFor(a.key)}
+                      className="btn tiny"
+                      style={on ? { background: 'var(--accent-dim)', borderColor: 'oklch(0.80 0.16 80 / 0.4)', color: 'var(--accent-2)' } : undefined}
+                    >
+                      {a.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div style={field}>
+              <label className="micro">General format (optional)</label>
+              <select className="input" value={format} onChange={e => setFormat(e.target.value)}>
+                <option value="">General</option>
+                {FORMAT_META.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+              </select>
+            </div>
+          </>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn primary" disabled={busy} onClick={create}>
+            {busy ? 'Adding…' : bulk ? 'Add accounts' : 'Add account'}
+          </button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 

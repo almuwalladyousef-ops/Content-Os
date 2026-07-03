@@ -17,12 +17,17 @@
   margin: 0 auto;
 }
 
+/* The host globals define .app as the shell grid (100vw/100vh) — fully
+ * neutralize that here, since readback's markup reuses the class name. */
 .readback .app {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
   flex: 1;
   min-height: 0;
+  width: 100%;
+  height: auto;
+  position: static;
 }
 
 .readback .app main {

@@ -473,13 +473,56 @@ function AccountsShelf({ accounts, onSelect, onChanged, onError }: {
 }) {
   const [filter, setFilter] = useState('all')
   const [adding, setAdding] = useState(false)
+  const [open, setOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return localStorage.getItem('board:accounts-open') !== '0'
+  })
+  const toggle = () => setOpen(v => {
+    localStorage.setItem('board:accounts-open', v ? '0' : '1')
+    return !v
+  })
   const shown = filter === 'all' ? accounts : accounts.filter(f => accountForList(f).includes(filter))
+
+  // Collapsed: one thin full-width bar.
+  if (!open) {
+    return (
+      <>
+        <button
+          onClick={toggle}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            width: '100%', padding: '6px 14px',
+            background: 'var(--bg-2)',
+            border: '1px solid var(--hairline)',
+            borderRadius: 999,
+            color: 'var(--text-dim)', fontSize: 12,
+            transition: 'all 120ms ease',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-strong)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--hairline)' }}
+        >
+          <span style={{ fontWeight: 500, color: 'var(--text-2)' }}>Accounts to study</span>
+          <span className="mono mute" style={{ fontSize: 10.5 }}>{accounts.length}</span>
+          <span className="mono mute" style={{ marginLeft: 'auto', fontSize: 10.5 }}>Show ▾</span>
+        </button>
+        {adding && (
+          <AddAccountModal
+            defaultFor={filter !== 'all' ? filter : 'traceback'}
+            onClose={() => setAdding(false)}
+            onCreated={(msg) => { setAdding(false); onChanged(msg) }}
+            onError={onError}
+          />
+        )}
+      </>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span className="h3">Accounts to study</span>
         <span className="mono dim" style={{ fontSize: 11 }}>{shown.length}</span>
+        <button className="btn tiny ghost" onClick={toggle}>Hide ▴</button>
         <button className="btn tiny" onClick={() => setAdding(true)}>+ Add account</button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           {[{ key: 'all', label: 'All' }, ...ACCOUNT_META].map(a => {

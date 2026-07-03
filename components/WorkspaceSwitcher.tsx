@@ -138,14 +138,6 @@ export default function WorkspaceSwitcher() {
           transition: 'border-color 120ms ease',
         }}
       >
-        <div style={{
-          width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-          background: 'linear-gradient(135deg, var(--accent), oklch(0.62 0.16 280))',
-          display: 'grid', placeItems: 'center',
-          fontSize: 11, fontWeight: 700, color: 'oklch(0.18 0.013 255)',
-        }}>
-          {(active?.name ?? 'W').slice(0, 1).toUpperCase()}
-        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="micro" style={{ fontSize: 8.5, color: 'var(--text-mute)', lineHeight: 1 }}>WORKSPACE</div>
           <div style={{ fontSize: 12.5, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>

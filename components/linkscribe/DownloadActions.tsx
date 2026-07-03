@@ -8,12 +8,13 @@ type DownloadActionsProps = {
 };
 
 export function DownloadActions({ result }: DownloadActionsProps) {
+  const disabled: React.CSSProperties = result ? {} : { opacity: 0.45, pointerEvents: "none" };
   return (
-    <div className="download-actions">
-      <a aria-disabled={!result} href={result?.downloads.transcript ?? "#"}>
+    <div style={{ display: "flex", gap: 8 }}>
+      <a className="btn" aria-disabled={!result} href={result?.downloads.transcript ?? "#"} style={{ textDecoration: "none", ...disabled }}>
         Download transcript
       </a>
-      <a aria-disabled={!result} href={result?.downloads.media ?? "#"}>
+      <a className="btn" aria-disabled={!result} href={result?.downloads.media ?? "#"} style={{ textDecoration: "none", ...disabled }}>
         Download video
       </a>
     </div>

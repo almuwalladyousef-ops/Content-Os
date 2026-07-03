@@ -140,9 +140,9 @@ export default function Dashboard() {
 
       {/* Quick-access tools */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--gap)' }}>
+        <Tile href="/board" Icon={IconLayout} title="Board" sub="Vault kanban" />
         <Tile href="/linkscribe" Icon={IconLink} title="LinkScribe" sub="Transcribe any link" />
         <Tile href="/readback" Icon={IconHeadphones} title="Readback" sub="Listen to articles" />
-        <Tile href="/api/home/board" external Icon={IconLayout} title="Board" sub="Vault kanban" />
       </div>
     </div>
   )

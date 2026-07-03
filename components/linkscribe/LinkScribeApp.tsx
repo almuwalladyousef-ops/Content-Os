@@ -81,13 +81,13 @@ export function LinkScribeApp() {
   }
 
   return (
-    <section className="app-shell">
-      <header className="topbar">
-        <div>
-          <h1>LinkScribe</h1>
-          <p>Paste a video link and get a timestamped transcript.</p>
-        </div>
-      </header>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--gap)" }}>
+      <div>
+        <h1 className="h1">LinkScribe</h1>
+        <p className="dim" style={{ fontSize: 13, marginTop: 4 }}>
+          Paste a video link and get a timestamped transcript.
+        </p>
+      </div>
 
       <LinkInput
         value={url}
@@ -96,16 +96,30 @@ export function LinkScribeApp() {
         onSubmit={handleSubmit}
       />
 
-      <section className="workspace" aria-label="Transcription workspace">
+      <section
+        aria-label="Transcription workspace"
+        className="ls-workspace"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(280px, 380px) minmax(0, 1fr)",
+          gap: "var(--gap)",
+          alignItems: "start",
+        }}
+      >
         <VideoPreview preview={displayedPreview} />
 
-        <div className="transcript-column">
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--gap)", minWidth: 0 }}>
           <TranscriptPanel segments={result?.segments ?? []} transcriptText={result?.transcriptText ?? ""} />
-          <DownloadActions result={result} />
-          <TranscriptionStatus state={state} message={status} error={error} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <DownloadActions result={result} />
+            <TranscriptionStatus state={state} message={status} error={error} />
+          </div>
         </div>
       </section>
-    </section>
+
+      {/* Stack the preview above the transcript on narrow screens */}
+      <style>{`@media (max-width: 900px) { .ls-workspace { grid-template-columns: 1fr !important; } }`}</style>
+    </div>
   );
 }
 

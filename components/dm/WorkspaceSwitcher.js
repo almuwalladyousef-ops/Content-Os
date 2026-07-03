@@ -109,9 +109,6 @@ export default function WorkspaceSwitcher({ workspaces, activeWorkspaceId, onCha
           onClick={() => setOpen(prev => !prev)}
           aria-expanded={open}
         >
-          <span className="sidebar-workspace__icon">
-            {activeWorkspace?.name?.[0]?.toUpperCase() || 'W'}
-          </span>
           <span className="sidebar-workspace__copy">
             <span className="sidebar-workspace__label">Workspace</span>
             <strong>{activeWorkspace?.name || 'No workspace'}</strong>

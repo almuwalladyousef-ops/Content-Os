@@ -1,11 +1,7 @@
-'use client'
-import '@/styles/linkscribe.css'
 import { LinkScribeApp } from '@/components/linkscribe/LinkScribeApp'
 
+export const metadata = { title: 'LinkScribe — Content OS' }
+
 export default function LinkScribePage() {
-  return (
-    <div className="linkscribe-root">
-      <LinkScribeApp />
-    </div>
-  )
+  return <LinkScribeApp />
 }

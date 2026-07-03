@@ -34,13 +34,28 @@ export function createHighlighter() {
     return ans;
   }
 
+  // The suite shell scrolls a <main> container, not the window — walk up from
+  // the span to whichever ancestor actually scrolls.
+  function scrollParent(el) {
+    for (let n = el.parentElement; n; n = n.parentElement) {
+      if (n.scrollHeight > n.clientHeight + 1) {
+        const { overflowY } = getComputedStyle(n);
+        if (overflowY === 'auto' || overflowY === 'scroll') return n;
+      }
+    }
+    return null;
+  }
+
   function scrollToActive(span) {
     if (Date.now() < suspendScrollUntil) return; // reader is scrolling by hand
     const rect = span.getBoundingClientRect();
     const band = window.innerHeight;
     // Only nudge when the active word drifts out of a comfortable reading band.
     if (rect.top > band * 0.2 && rect.top < band * 0.62) return;
-    window.scrollBy({ top: rect.top - band * 0.32, behavior: reducedMotion ? 'auto' : 'smooth' });
+    const delta = rect.top - band * 0.32;
+    const container = scrollParent(span);
+    if (container) container.scrollBy({ top: delta, behavior: reducedMotion ? 'auto' : 'smooth' });
+    else window.scrollBy({ top: delta, behavior: reducedMotion ? 'auto' : 'smooth' });
   }
 
   function setActive(idx) {

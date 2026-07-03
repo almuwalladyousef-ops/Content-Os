@@ -147,6 +147,8 @@ function openArticle(article, { libraryId = null, progressMs = 0 } = {}) {
   updateTimeUI(progressMs);
   setPlayingUI(false);
   window.scrollTo({ top: 0 });
+  // The suite shell scrolls <main class="scroll">, not the window.
+  els.reading.closest('main.scroll, .scroll')?.scrollTo({ top: 0 });
   showView('reader');
   saveSession();
 

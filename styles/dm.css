@@ -36,7 +36,7 @@
   --success:       oklch(0.80 0.15 155);
   --success-bg:    oklch(0.78 0.16 155 / 0.14);
   
-  --radius: 12px;
+  --radius: 14px;
   
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, monospace;
@@ -56,11 +56,11 @@
 }
 .dm-tabs { display: flex; gap: 4px; }
 .dm-tab {
-  padding: 7px 14px; border-radius: 9px; font-size: 13px; font-weight: 500;
-  color: var(--text-muted); cursor: pointer;
+  padding: 6px 14px; border-radius: 9px; font-size: 13px; font-weight: 500;
+  color: var(--text-muted); cursor: pointer; border: 1px solid transparent;
 }
 .dm-tab:hover { color: var(--text); background: oklch(1 0 0 / 0.05); }
-.dm-tab.active { color: var(--text); background: var(--surface-2); }
+.dm-tab.active { color: var(--text); background: var(--surface-2); border: 1px solid var(--border); }
 
 .dm-root {
   .app { display: flex; min-height: 100vh; position: relative; z-index: 1; }
@@ -246,7 +246,7 @@
   .page { display: flex; flex-direction: column; gap: 24px; }
   
   .page-header { display: flex; justify-content: space-between; align-items: center; }
-  .page-header h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.022em; }
+  .page-header h1 { font-size: 26px; font-weight: 500; letter-spacing: -0.022em; }
   
   h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.014em; }
   h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
@@ -418,7 +418,7 @@
     white-space: nowrap;
   }
   .rule-badge--twostep { background: oklch(0.62 0.13 264 / 0.22); color: oklch(0.84 0.10 264); }
-  .rule-badge--any { background: var(--success-bg); color: var(--success); }
+  .rule-badge--any { background: var(--accent-dim); color: var(--accent-hover); }
   
   /* Inline active toggle button */
   .active-toggle {
@@ -430,14 +430,14 @@
     border: 1px solid;
     transition: all 0.15s;
   }
-  .active-toggle--on { background: var(--success-bg); color: var(--success); border-color: oklch(0.78 0.16 155 / 0.4); }
+  .active-toggle--on { background: var(--accent-dim); color: var(--accent-hover); border-color: oklch(0.80 0.16 80 / 0.4); }
   .active-toggle--on:hover { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
   .active-toggle--off { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
-  .active-toggle--off:hover { background: var(--success-bg); color: var(--success); border-color: oklch(0.78 0.16 155 / 0.4); }
+  .active-toggle--off:hover { background: var(--accent-dim); color: var(--accent-hover); border-color: oklch(0.80 0.16 80 / 0.4); }
   
   /* Pills (legacy) */
   .pill { font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 99px; }
-  .pill.active { background: var(--success-bg); color: var(--success); }
+  .pill.active { background: var(--accent-dim); color: var(--accent-hover); }
   .pill.inactive { background: var(--surface-2); color: var(--text-muted); }
   
   /* Skeleton */
@@ -480,8 +480,8 @@
     cursor: pointer;
     transition: all 0.15s;
   }
-  .bulk-btn--activate { background: var(--success-bg); color: var(--success); border-color: oklch(0.78 0.16 155 / 0.4); }
-  .bulk-btn--activate:hover { background: oklch(0.78 0.16 155 / 0.22); }
+  .bulk-btn--activate { background: var(--accent-dim); color: var(--accent-hover); border-color: oklch(0.80 0.16 80 / 0.4); }
+  .bulk-btn--activate:hover { background: oklch(0.63 0.16 80 / 0.28); }
   .bulk-btn--pause { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
   .bulk-btn--pause:hover { background: var(--surface-3); }
   .bulk-btn--delete { background: var(--danger-bg); color: var(--danger); border-color: oklch(0.70 0.19 25 / 0.4); }
@@ -606,7 +606,7 @@
     flex-direction: column;
   }
   
-  .section--mandatory { border-left: 3px solid var(--success); }
+  .section--mandatory { border-left: 3px solid var(--accent); }
   .section-header {
     display: flex;
     align-items: center;
@@ -630,9 +630,9 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--success);
-    background: var(--success-bg);
-    border: 1px solid oklch(0.78 0.16 155 / 0.4);
+    color: var(--accent-hover);
+    background: var(--accent-dim);
+    border: 1px solid oklch(0.80 0.16 80 / 0.4);
     border-radius: 4px;
     padding: 2px 6px;
   }

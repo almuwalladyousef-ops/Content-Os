@@ -11,7 +11,6 @@ import {
   IconSidebar,
   IconLink,
   IconHeadphones,
-  IconExternal,
   IconLayout,
 } from './Icons'
 
@@ -37,13 +36,12 @@ const MAIN_NAV = [
 ]
 
 const TOOLS_NAV = [
+  { href: '/board',      label: 'Board',      Icon: IconLayout },
   { href: '/linkscribe', label: 'LinkScribe', Icon: IconLink },
   { href: '/readback',   label: 'Readback',   Icon: IconHeadphones },
 ]
 
 export default function Sidebar({ navOpen, isMobile, onToggle, pathname, connectedCount, email }: SidebarProps) {
-  const initials = email ? email.slice(0, 2).toUpperCase() : 'YO'
-
   return (
     <aside
       style={{
@@ -130,26 +128,6 @@ export default function Sidebar({ navOpen, isMobile, onToggle, pathname, connect
         {TOOLS_NAV.map(item => (
           <NavLink key={item.href} item={item} pathname={pathname} />
         ))}
-        {/* Board lives on the home server — open it in a new tab */}
-        <a
-          href="/api/home/board"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '9px 10px', borderRadius: 9,
-            color: 'var(--text-dim)', border: '1px solid transparent',
-            textDecoration: 'none', transition: 'all 120ms ease',
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'oklch(0.215 0.014 255 / 0.5)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'transparent' }}
-        >
-          <IconLayout size={17} />
-          <span style={{ fontSize: 13 }}>Board</span>
-          <span style={{ marginLeft: 'auto', color: 'var(--text-mute)' }}>
-            <IconExternal size={12} />
-          </span>
-        </a>
       </div>
 
       {/* Bottom slot */}
@@ -181,7 +159,7 @@ export default function Sidebar({ navOpen, isMobile, onToggle, pathname, connect
           href="/settings"
           style={{
             display: 'flex', alignItems: 'center', gap: 9,
-            padding: 8,
+            padding: '10px 12px',
             borderRadius: 10,
             background: 'var(--bg-2)',
             border: '1px solid var(--hairline)',
@@ -189,17 +167,6 @@ export default function Sidebar({ navOpen, isMobile, onToggle, pathname, connect
             color: 'inherit',
           }}
         >
-          <div style={{
-            width: 30, height: 30,
-            borderRadius: 8,
-            background: 'linear-gradient(135deg, var(--accent), oklch(0.62 0.16 280))',
-            display: 'grid', placeItems: 'center',
-            fontSize: 11, fontWeight: 600,
-            color: 'oklch(0.18 0.013 255)',
-            flexShrink: 0,
-          }}>
-            {initials}
-          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontSize: 12,

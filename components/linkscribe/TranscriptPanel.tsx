@@ -2,6 +2,7 @@
 
 import type { TranscriptSegment } from "@/lib/linkscribe/types";
 import { formatTranscriptPlainText } from "@/lib/linkscribe/formatTranscript";
+import { SectionCard } from "./SectionCard";
 
 type TranscriptPanelProps = {
   segments: TranscriptSegment[];
@@ -18,32 +19,38 @@ export function TranscriptPanel({ segments, transcriptText }: TranscriptPanelPro
   }
 
   return (
-    <section className="transcript-panel" aria-label="Transcript">
-      <div className="section-heading">
-        <h2>Transcript</h2>
-        <button type="button" onClick={copyTranscript} disabled={!transcriptText}>
+    <SectionCard
+      title="Transcript"
+      ariaLabel="Transcript"
+      action={
+        <button type="button" className="btn tiny" onClick={copyTranscript} disabled={!transcriptText}
+          style={{ opacity: transcriptText ? 1 : 0.5 }}>
           Copy transcript
         </button>
-      </div>
-
-      <div className="transcript-output">
+      }
+    >
+      <div className="scroll" style={{ maxHeight: 460, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
         {segments.length > 0 ? (
           segments.map((segment, index) => (
-            <p key={`${segment.startSeconds}-${index}`}>
-              <time>{formatRange(segment.startSeconds, segment.endSeconds)}</time>
-              <span>{segment.text}</span>
+            <p key={`${segment.startSeconds}-${index}`} style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
+              <time className="mono" style={{ fontSize: 10.5, color: "var(--accent)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                {formatRange(segment.startSeconds, segment.endSeconds)}
+              </time>
+              <span style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--text-2)" }}>{segment.text}</span>
             </p>
           ))
         ) : (
-          <p className="transcript-empty">Transcript will appear here after processing.</p>
+          <p className="mute" style={{ fontSize: 12.5, padding: "28px 0", textAlign: "center" }}>
+            Transcript will appear here after processing.
+          </p>
         )}
       </div>
-    </section>
+    </SectionCard>
   );
 }
 
 function formatRange(startSeconds: number, endSeconds: number): string {
-  return `${formatTimestamp(startSeconds)} - ${formatTimestamp(endSeconds)}`;
+  return `${formatTimestamp(startSeconds)} – ${formatTimestamp(endSeconds)}`;
 }
 
 function formatTimestamp(seconds: number): string {

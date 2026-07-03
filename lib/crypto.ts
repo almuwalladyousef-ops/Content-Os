@@ -7,10 +7,19 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
  * without the server secret.
  */
 
+let warnedDevKey = false
+
 function getKey(): Buffer {
   const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || ''
   if (!secret) {
-    throw new Error('NEXTAUTH_SECRET is not set. Generate one with: openssl rand -base64 32')
+    // Local dev without a .env: fall back to a fixed key instead of breaking
+    // every feature that persists state (workspaces, schedule queue). In
+    // production set NEXTAUTH_SECRET (openssl rand -base64 32).
+    if (!warnedDevKey) {
+      warnedDevKey = true
+      console.warn('[crypto] NEXTAUTH_SECRET not set — using an insecure dev-only key')
+    }
+    return Buffer.from('contentos-dev-key-not-for-production!!').subarray(0, 32)
   }
   const buf = Buffer.from(secret, 'base64')
   return buf.length >= 32 ? buf.subarray(0, 32) : Buffer.concat([buf, Buffer.alloc(32 - buf.length)])

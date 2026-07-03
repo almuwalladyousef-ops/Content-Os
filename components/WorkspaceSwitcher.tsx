@@ -65,23 +65,34 @@ export default function WorkspaceSwitcher() {
     if (!state || id === state.activeId || busy) return
     setBusy(true)
     try {
-      await fetch('/api/workspaces/switch', {
+      const res = await fetch('/api/workspaces/switch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       })
+      if (!res.ok) throw new Error(`Switch failed (${res.status})`)
       // Connections are read server-side from cookies — reload so everything re-reads the new workspace.
       window.location.reload()
-    } catch { setBusy(false) }
+    } catch (e) {
+      alert((e as Error).message)
+      setBusy(false)
+    }
   }
 
   async function createWorkspace() {
     if (busy) return
     setBusy(true)
     try {
-      await fetch('/api/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const res = await fetch('/api/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({} as { error?: string }))
+        throw new Error(j.error || `Could not create workspace (${res.status})`)
+      }
       window.location.reload()
-    } catch { setBusy(false) }
+    } catch (e) {
+      alert((e as Error).message)
+      setBusy(false)
+    }
   }
 
   async function rename(id: string) {
@@ -106,18 +117,23 @@ export default function WorkspaceSwitcher() {
     if (!confirm(`Delete "${w?.name}"? Its connected accounts will be removed.`)) return
     setBusy(true)
     try {
-      const next: WorkspaceState = await fetch('/api/workspaces', {
+      const res = await fetch('/api/workspaces', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
-      }).then(r => r.json())
+      })
+      if (!res.ok) throw new Error(`Delete failed (${res.status})`)
+      const next: WorkspaceState = await res.json()
       if (id === state.activeId) {
         window.location.reload()
         return
       }
       setState(next)
       setBusy(false)
-    } catch { setBusy(false) }
+    } catch (e) {
+      alert((e as Error).message)
+      setBusy(false)
+    }
   }
 
   if (!state) return null

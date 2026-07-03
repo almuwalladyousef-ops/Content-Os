@@ -18,15 +18,25 @@ export async function PUT(req, { params }) {
   const existing = rules.find(r => r.id === id)
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const updated = { ...existing, ...body, id }
-  const saved = await saveRule(updated)
-  return NextResponse.json(saved)
+  try {
+    const updated = { ...existing, ...body, id }
+    const saved = await saveRule(updated)
+    return NextResponse.json(saved)
+  } catch (err) {
+    console.error('[dm/rules] update failed:', err)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }
 
 export async function DELETE(req, { params }) {
   const { id } = await params
-  await deleteRule(id)
-  return NextResponse.json({ success: true })
+  try {
+    await deleteRule(id)
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error('[dm/rules] delete failed:', err)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }
 
 // POST /api/dm/rules/[id]?action=reset-log   — clear dmedLog for this rule

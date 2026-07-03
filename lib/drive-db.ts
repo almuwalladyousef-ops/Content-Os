@@ -88,6 +88,13 @@ function devRead(section: string): unknown {
 }
 
 function devWrite(section: string, data: unknown): void {
+  if (process.env.VERCEL) {
+    // Serverless filesystems are read-only — a local-file fallback can never
+    // work there, so fail with the actual problem instead of an fs error.
+    throw new Error(
+      'Drive DB is not configured: set GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY and DRIVE_DB_FOLDER_ID (or per-section DRIVE_DB_*_FILE_ID) in your Vercel project settings.'
+    )
+  }
   const p = devPath(section)
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8')

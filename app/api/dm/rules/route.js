@@ -49,27 +49,32 @@ export async function POST(req) {
   const action = searchParams.get('action')
   const body = await req.json()
 
-  // Duplicate an existing rule
-  if (action === 'duplicate' && body.sourceId) {
-    const rules = await getRules()
-    const source = rules.find(r => r.id === body.sourceId)
-    if (!source) return NextResponse.json({ error: 'Source rule not found' }, { status: 404 })
-    const now = new Date().toISOString()
-    const duplicate = {
-      ...source,
-      id: uuid(),
-      name: `${source.name} (Copy)`,
-      active: false,
-      createdAt: now,
-      updatedAt: now,
+  try {
+    // Duplicate an existing rule
+    if (action === 'duplicate' && body.sourceId) {
+      const rules = await getRules()
+      const source = rules.find(r => r.id === body.sourceId)
+      if (!source) return NextResponse.json({ error: 'Source rule not found' }, { status: 404 })
+      const now = new Date().toISOString()
+      const duplicate = {
+        ...source,
+        id: uuid(),
+        name: `${source.name} (Copy)`,
+        active: false,
+        createdAt: now,
+        updatedAt: now,
+      }
+      await saveRule(duplicate)
+      return NextResponse.json(duplicate, { status: 201 })
     }
-    await saveRule(duplicate)
-    return NextResponse.json(duplicate, { status: 201 })
-  }
 
-  const rule = buildRule(body, uuid(), new Date().toISOString())
-  const saved = await saveRule(rule)
-  return NextResponse.json(saved, { status: 201 })
+    const rule = buildRule(body, uuid(), new Date().toISOString())
+    const saved = await saveRule(rule)
+    return NextResponse.json(saved, { status: 201 })
+  } catch (err) {
+    console.error('[dm/rules] save failed:', err)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }
 
 export async function PATCH(req) {
@@ -82,14 +87,24 @@ export async function PATCH(req) {
 
   if (!Object.keys(fields).length) return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
 
-  await bulkUpdateRules(ids, fields)
-  return NextResponse.json({ success: true, updated: ids.length })
+  try {
+    await bulkUpdateRules(ids, fields)
+    return NextResponse.json({ success: true, updated: ids.length })
+  } catch (err) {
+    console.error('[dm/rules] bulk update failed:', err)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }
 
 export async function DELETE(req) {
   const body = await req.json()
   const ids = Array.isArray(body?.ids) ? body.ids : []
   if (!ids.length) return NextResponse.json({ error: 'No ids provided' }, { status: 400 })
-  await deleteRules(ids)
-  return NextResponse.json({ success: true, deleted: ids.length })
+  try {
+    await deleteRules(ids)
+    return NextResponse.json({ success: true, deleted: ids.length })
+  } catch (err) {
+    console.error('[dm/rules] delete failed:', err)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }

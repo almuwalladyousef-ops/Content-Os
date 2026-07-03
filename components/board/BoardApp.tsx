@@ -155,26 +155,36 @@ export default function BoardApp() {
             {counts.active} active · {counts.research} research · {counts.archived} archived
           </div>
         </div>
-        <div style={{
-          display: 'flex', gap: 2, padding: 3,
-          background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--hairline)',
-        }}>
-          {(['board', 'calendar', 'research', 'archive'] as View[]).map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              style={{
-                padding: '6px 14px', borderRadius: 7, fontSize: 12.5,
-                fontWeight: view === v ? 500 : 400,
-                color: view === v ? 'var(--text)' : 'var(--text-dim)',
-                background: view === v ? 'var(--surface-2)' : 'transparent',
-                border: `1px solid ${view === v ? 'var(--border)' : 'transparent'}`,
-                textTransform: 'capitalize',
-              }}
-            >
-              {v}
-            </button>
-          ))}
+        {/* View tabs — plain text that blends with the header, gold bar under the active one */}
+        <div style={{ display: 'flex', gap: 4, alignSelf: 'center' }}>
+          {(['board', 'calendar', 'research', 'archive'] as View[]).map(v => {
+            const active = view === v
+            return (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                style={{
+                  position: 'relative',
+                  padding: '8px 12px', fontSize: 13,
+                  fontWeight: active ? 500 : 400,
+                  color: active ? 'var(--text)' : 'var(--text-mute)',
+                  textTransform: 'capitalize',
+                  transition: 'color 120ms ease',
+                }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-dim)' }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-mute)' }}
+              >
+                {v}
+                {active && (
+                  <span style={{
+                    position: 'absolute', left: 12, right: 12, bottom: 2, height: 2,
+                    background: 'var(--accent)', borderRadius: 999,
+                    boxShadow: '0 0 8px var(--accent-glow)',
+                  }} />
+                )}
+              </button>
+            )
+          })}
         </div>
         <button className="btn primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating(view === 'research' ? 'research' : 'script')}>
           + New card

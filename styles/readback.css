@@ -9,6 +9,10 @@
   flex-direction: column;
   gap: var(--gap);
   min-height: 100%;
+  /* One centered reading column — never full-bleed. */
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
 }
 
 .readback .app {

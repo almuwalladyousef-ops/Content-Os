@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ACCOUNT_META, BOARD_COLUMNS, Card, CardStatus, FLOW_MAP, FORMAT_META, NEXT,
+  ACCOUNT_META, BOARD_COLUMNS, Card, CardStatus, FORMAT_META,
   RESEARCH_BUCKETS, ResearchBucket, accountLabel, apiCreate, apiDelete, apiScan,
   apiWrite, buildFilePath, buildTemplate, enrich, formatLabel, graphLinksFor,
   isContent, isResearchItem, pathForCard, statusLabel, toSlug, withGraphLinks,
   writeFM, isHubFile,
 } from '@/lib/board/model'
+import FileEditor from './FileEditor'
+import CalendarView from './CalendarView'
 
-type View = 'board' | 'research' | 'archive'
+type View = 'board' | 'calendar' | 'research' | 'archive'
 
 const card: React.CSSProperties = {
   background: 'var(--surface)',
@@ -88,6 +90,19 @@ export default function BoardApp() {
     }
   }, [files, load, say])
 
+  // Reschedule from the calendar: rewrite one frontmatter date field.
+  const saveDate = useCallback(async (path: string, field: string, value: string) => {
+    const f = files.find(x => x.path === path)
+    if (!f || f.data[field] === value) return
+    try {
+      await apiWrite(path, writeFM({ ...f.data, [field]: value || null }, f.body))
+      say(value ? `Moved to ${value}` : 'Date cleared')
+      await load()
+    } catch (e) {
+      say('Reschedule failed: ' + (e as Error).message, true)
+    }
+  }, [files, load, say])
+
   const counts = useMemo(() => ({
     active: files.filter(f => isContent(f) && f.status !== 'archive').length,
     research: files.filter(isResearchItem).length,
@@ -124,7 +139,13 @@ export default function BoardApp() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap)', height: '100%', minHeight: 0 }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 'var(--gap)',
+      height: '100%', minHeight: 0,
+      // Board + calendar fit the viewport (columns/grid scroll internally);
+      // research + archive scroll as normal pages.
+      overflow: view === 'board' || view === 'calendar' ? 'hidden' : 'visible',
+    }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
@@ -141,7 +162,7 @@ export default function BoardApp() {
       {/* View tabs + filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--hairline)' }}>
-          {(['board', 'research', 'archive'] as View[]).map(v => (
+          {(['board', 'calendar', 'research', 'archive'] as View[]).map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -181,16 +202,19 @@ export default function BoardApp() {
       {view === 'board' && (
         <Kanban cards={boardCards} onSelect={setSel} onDrop={moveCard} onQuickAdd={setCreating} dragPath={dragPath} />
       )}
+      {view === 'calendar' && (
+        <CalendarView files={files.filter(f => !isHubFile(f))} onSelect={setSel} onReschedule={saveDate} />
+      )}
       {view === 'research' && <Research cards={researchCards} onSelect={setSel} />}
       {view === 'archive' && <Archive cards={archivedCards} onSelect={setSel} onRestore={p => moveCard(p, 'script')} />}
 
       {/* Modals + toast */}
       {sel && (
-        <CardModal
+        <FileEditor
           file={sel}
           onClose={() => setSel(null)}
           onMove={moveCard}
-          onSaved={async (msg) => { say(msg); await load() }}
+          onSaved={async (msg) => { setSel(null); say(msg); await load() }}
           onError={msg => say(msg, true)}
           onDeleted={async () => { setSel(null); say('Deleted'); await load() }}
         />
@@ -234,12 +258,46 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
   dragPath: React.MutableRefObject<string | null>
 }) {
   const [over, setOver] = useState<string | null>(null)
+  const scroller = useRef<HTMLDivElement>(null)
+  const pan = useRef<{ startX: number; startLeft: number } | null>(null)
+
   const byStatus: Record<string, Card[]> = {}
   BOARD_COLUMNS.forEach(c => { byStatus[c.key] = [] })
   cards.forEach(f => { (byStatus[f.status || 'script'] ?? byStatus['script']).push(f) })
 
+  // Press-and-hold anywhere that isn't a card/button to pan the board.
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    const t = e.target as HTMLElement
+    if (t.closest('[draggable="true"], button, input, textarea, select')) return
+    const el = scroller.current
+    if (!el) return
+    pan.current = { startX: e.clientX, startLeft: el.scrollLeft }
+    const onMove = (ev: MouseEvent) => {
+      if (!pan.current || !scroller.current) return
+      scroller.current.scrollLeft = pan.current.startLeft - (ev.clientX - pan.current.startX)
+    }
+    const onUp = () => {
+      pan.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    e.preventDefault()
+  }
+
   return (
-    <div className="scroll" style={{ display: 'flex', gap: 12, overflowX: 'auto', flex: 1, minHeight: 0, paddingBottom: 4 }}>
+    <div
+      ref={scroller}
+      className="scroll"
+      onMouseDown={onMouseDown}
+      style={{
+        display: 'flex', gap: 10, overflowX: 'auto',
+        flex: 1, minHeight: 0, paddingBottom: 4,
+        cursor: 'grab',
+      }}
+    >
       {BOARD_COLUMNS.map(({ key, label, color }) => (
         <div
           key={key}
@@ -251,16 +309,16 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
           }}
           style={{
             ...card,
-            width: 250, minWidth: 250,
+            flex: '1 1 0', minWidth: 190,
             display: 'flex', flexDirection: 'column',
-            padding: 10,
+            padding: 9,
             borderColor: over === key ? 'var(--accent)' : 'var(--border)',
             transition: 'border-color 120ms ease',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 4px 10px' }}>
             <span style={{ width: 7, height: 7, borderRadius: 999, background: color, boxShadow: `0 0 8px ${color}` }} />
-            <span style={{ fontSize: 12, fontWeight: 500 }}>{label}</span>
+            <span style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
             <span className="mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--text-mute)' }}>
               {byStatus[key].length}
             </span>
@@ -419,104 +477,6 @@ function Archive({ cards, onSelect, onRestore }: {
         {!cards.length && <div className="dim" style={{ padding: 'var(--pad)', fontSize: 13, textAlign: 'center' }}>Archive is empty.</div>}
       </div>
     </div>
-  )
-}
-
-// ── Card modal ───────────────────────────────────────────────────────────────
-
-function CardModal({ file, onClose, onMove, onSaved, onError, onDeleted }: {
-  file: Card
-  onClose: () => void
-  onMove: (path: string, status: CardStatus) => void
-  onSaved: (msg: string) => void
-  onError: (msg: string) => void
-  onDeleted: () => void
-}) {
-  const [body, setBody] = useState(file.body)
-  const [busy, setBusy] = useState(false)
-  const dirty = body !== file.body
-  const next = file.status ? NEXT[file.status] : undefined
-
-  const save = async () => {
-    setBusy(true)
-    try {
-      await apiWrite(file.path, writeFM(file.data, body))
-      onSaved('Saved')
-    } catch (e) { onError('Save failed: ' + (e as Error).message) }
-    setBusy(false)
-  }
-
-  const remove = async () => {
-    if (!confirm(`Delete "${file.title}"? This removes the file from your vault.`)) return
-    setBusy(true)
-    try { await apiDelete(file.path); onDeleted() }
-    catch (e) { onError('Delete failed: ' + (e as Error).message); setBusy(false) }
-  }
-
-  return (
-    <Modal onClose={onClose}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="h2" style={{ lineHeight: 1.3 }}>{file.title}</div>
-          <div className="mono mute" style={{ fontSize: 10.5, marginTop: 5, wordBreak: 'break-all' }}>{file.path}</div>
-          <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-            {file.status && (
-              <Tag accent>{statusLabel(file.status)}</Tag>
-            )}
-            <CardTags f={file} />
-          </div>
-        </div>
-        <button className="btn tiny ghost" onClick={onClose}>✕</button>
-      </div>
-
-      <textarea
-        className="textarea scroll"
-        value={body}
-        onChange={e => setBody(e.target.value)}
-        spellCheck={false}
-        style={{ width: '100%', minHeight: 300, marginTop: 14, fontFamily: 'var(--font-mono)', fontSize: 12.5, lineHeight: 1.6, resize: 'vertical' }}
-      />
-
-      <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn primary" disabled={busy || !dirty} onClick={save} style={{ opacity: dirty ? 1 : 0.5 }}>
-          Save changes
-        </button>
-        {next && (
-          <button className="btn" disabled={busy} onClick={() => onMove(file.path, next)}>
-            Move to {statusLabel(next)} →
-          </button>
-        )}
-        <MoveMenu file={file} onMove={onMove} disabled={busy} />
-        <span style={{ flex: 1 }} />
-        {file.status !== 'archive' ? (
-          <button className="btn ghost" disabled={busy} onClick={() => onMove(file.path, 'archive')}>Archive</button>
-        ) : (
-          <button className="btn" disabled={busy} onClick={() => onMove(file.path, 'script')}>Restore to Script</button>
-        )}
-        <button className="btn danger" disabled={busy} onClick={remove}>Delete</button>
-      </div>
-    </Modal>
-  )
-}
-
-function MoveMenu({ file, onMove, disabled }: {
-  file: Card
-  onMove: (path: string, status: CardStatus) => void
-  disabled: boolean
-}) {
-  return (
-    <select
-      className="input"
-      disabled={disabled}
-      value=""
-      onChange={e => { if (e.target.value) onMove(file.path, e.target.value as CardStatus) }}
-      style={{ padding: '8px 10px', fontSize: 12.5, width: 'auto' }}
-    >
-      <option value="" disabled>Move to…</option>
-      {BOARD_COLUMNS.filter(c => c.key !== file.status).map(c => (
-        <option key={c.key} value={c.key}>{c.label}</option>
-      ))}
-    </select>
   )
 }
 

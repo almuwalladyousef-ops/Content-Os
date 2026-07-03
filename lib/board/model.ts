@@ -379,3 +379,76 @@ export async function apiDelete(filePath: string): Promise<void> {
   const j = await r.json().catch(() => ({}))
   if (!r.ok || j.ok === false) throw new Error(j.error || 'Delete failed')
 }
+
+// ── Editor helpers ───────────────────────────────────────────────────────────
+
+export function safeMarkdownFileName(value: string): string {
+  const stem = String(value || '').trim()
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/-+/g, '-')
+    .trim()
+  return stem ? `${stem}.md` : ''
+}
+
+export function parentDir(p: string): string {
+  const parts = String(p || '').split('/')
+  parts.pop()
+  return parts.join('/')
+}
+
+/** One editable section of a note body. `heading` is null for the preamble. */
+export interface BodyBlock {
+  heading: string | null
+  content: string
+}
+
+/**
+ * Split a body into its H1 title, a preamble, and one block per `## Heading`,
+ * so each section edits as its own block. parse → serialize round-trips.
+ */
+export function parseBlocks(body: string): { title: string | null; blocks: BodyBlock[] } {
+  let rest = body
+  let title: string | null = null
+  const h1 = rest.match(/^\s*#\s+(.+)\r?\n?/)
+  if (h1) {
+    title = h1[1].trim()
+    rest = rest.slice(h1[0].length)
+  }
+  const blocks: BodyBlock[] = []
+  const parts = rest.split(/^## +/m)
+  const preamble = parts.shift() ?? ''
+  if (preamble.trim()) blocks.push({ heading: null, content: preamble.trim() })
+  for (const part of parts) {
+    const nl = part.indexOf('\n')
+    const heading = (nl < 0 ? part : part.slice(0, nl)).trim()
+    const content = nl < 0 ? '' : part.slice(nl + 1).trim()
+    blocks.push({ heading, content })
+  }
+  return { title, blocks }
+}
+
+export function serializeBlocks(title: string | null, blocks: BodyBlock[]): string {
+  const out: string[] = []
+  if (title) out.push(`# ${title}`)
+  for (const b of blocks) {
+    if (b.heading == null) { if (b.content.trim()) out.push(b.content.trim()) }
+    else out.push(`## ${b.heading}\n\n${b.content.trim()}`)
+  }
+  return out.join('\n\n') + '\n'
+}
+
+// ── Calendar ─────────────────────────────────────────────────────────────────
+
+export const CAL_FIELDS = [
+  { field: 'film_date', timeField: 'film_time', label: 'Film', color: 'var(--ok)' },
+  { field: 'post_date', timeField: 'post_time', label: 'Post', color: 'var(--accent)' },
+] as const
+
+export const ymd = (d: Date) =>
+  d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+
+export function openInObsidian(path: string) {
+  const fp = `01 Content OS/${path}`
+  window.location.href = `obsidian://open?vault=${encodeURIComponent('Obsidian Vault')}&file=${encodeURIComponent(fp)}`
+}

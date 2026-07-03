@@ -4,12 +4,14 @@
  * vanilla engine in components/readback/engine — keep them; restyle freely.
  */
 
+/* One centered column that always fits the viewport — the page itself never
+ * scrolls; only the reading text / library list scroll internally. */
 .readback {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
-  min-height: 100%;
-  /* One centered reading column — never full-bleed. */
+  height: 100%;
+  overflow: hidden;
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
@@ -20,6 +22,37 @@
   flex-direction: column;
   gap: var(--gap);
   flex: 1;
+  min-height: 0;
+}
+
+.readback .app main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.readback .view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.readback .view[hidden] { display: none; }
+
+/* Reading + library scroll inside their own panes */
+.readback #view-reader,
+.readback #view-library {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+.readback #view-reader::-webkit-scrollbar,
+.readback #view-library::-webkit-scrollbar { width: 8px; }
+.readback #view-reader::-webkit-scrollbar-thumb,
+.readback #view-library::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 999px;
 }
 
 /* ── Top bar (page header) ─────────────────────────────────────────────── */
@@ -97,11 +130,10 @@
 .readback .input-wrap {
   width: 100%;
   max-width: 640px;
-  margin: 0 auto;
+  margin: auto;      /* vertically + horizontally centered in the pane */
   display: flex;
   flex-direction: column;
   gap: var(--gap);
-  padding-top: 4vh;
 }
 
 .readback .input-hero { text-align: center; }
@@ -147,7 +179,8 @@
 
 .readback .composer textarea {
   width: 100%;
-  min-height: 170px;
+  min-height: 120px;
+  max-height: 32vh;
   padding: 16px;
   background: transparent;
   border: none;
@@ -248,7 +281,7 @@
   max-width: 680px;
   margin: 0 auto;
   width: 100%;
-  padding: 18px 0 96px;
+  padding: 18px 12px 40px 0;
   font-size: 16.5px;
   line-height: 1.85;
   color: var(--text-2);
@@ -358,9 +391,7 @@
 /* ── Transport bar ─────────────────────────────────────────────────────── */
 
 .readback .transport {
-  position: sticky;
-  bottom: 12px;
-  z-index: 30;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 12px;

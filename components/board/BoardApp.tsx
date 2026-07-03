@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ACCOUNT_META, BOARD_COLUMNS, Card, CardStatus, FORMAT_META,
-  RESEARCH_BUCKETS, ResearchBucket, accountLabel, apiCreate, apiDelete, apiScan,
-  apiWrite, buildFilePath, buildTemplate, enrich, formatLabel, graphLinksFor,
-  isContent, isResearchItem, pathForCard, statusLabel, toSlug, withGraphLinks,
-  writeFM, isHubFile,
+  RESEARCH_BUCKETS, ResearchBucket, accountForList, accountLabel, apiCreate,
+  apiDelete, apiScan, apiWrite, buildFilePath, buildTemplate, enrich,
+  formatLabel, graphLinksFor, isContent, isResearchItem, pathForCard,
+  statusLabel, toSlug, withGraphLinks, writeFM, isHubFile,
 } from '@/lib/board/model'
 import FileEditor from './FileEditor'
 import CalendarView from './CalendarView'
@@ -146,22 +146,19 @@ export default function BoardApp() {
       // research + archive scroll as normal pages.
       overflow: view === 'board' || view === 'calendar' ? 'hidden' : 'visible',
     }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      {/* Header — title left, view tabs in the middle, new card right */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <div>
           <h1 className="h1">Board</h1>
           <div className="mono dim" style={{ fontSize: 11, marginTop: 4 }}>
             {counts.active} active · {counts.research} research · {counts.archived} archived
           </div>
         </div>
-        <button className="btn primary" onClick={() => setCreating(view === 'research' ? 'research' : 'script')}>
-          + New card
-        </button>
-      </div>
-
-      {/* View tabs + filters */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--hairline)' }}>
+        <div style={{
+          display: 'flex', gap: 2, padding: 3,
+          background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--hairline)',
+          margin: '0 auto',
+        }}>
           {(['board', 'calendar', 'research', 'archive'] as View[]).map(v => (
             <button
               key={v}
@@ -179,7 +176,13 @@ export default function BoardApp() {
             </button>
           ))}
         </div>
+        <button className="btn primary" onClick={() => setCreating(view === 'research' ? 'research' : 'script')}>
+          + New card
+        </button>
+      </div>
 
+      {/* Filters */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Chips
           items={[{ key: 'all', label: 'All accounts' }, ...ACCOUNT_META]}
           value={acc} onChange={setAcc}
@@ -258,46 +261,15 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
   dragPath: React.MutableRefObject<string | null>
 }) {
   const [over, setOver] = useState<string | null>(null)
-  const scroller = useRef<HTMLDivElement>(null)
-  const pan = useRef<{ startX: number; startLeft: number } | null>(null)
 
   const byStatus: Record<string, Card[]> = {}
   BOARD_COLUMNS.forEach(c => { byStatus[c.key] = [] })
   cards.forEach(f => { (byStatus[f.status || 'script'] ?? byStatus['script']).push(f) })
 
-  // Press-and-hold anywhere that isn't a card/button to pan the board.
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return
-    const t = e.target as HTMLElement
-    if (t.closest('[draggable="true"], button, input, textarea, select')) return
-    const el = scroller.current
-    if (!el) return
-    pan.current = { startX: e.clientX, startLeft: el.scrollLeft }
-    const onMove = (ev: MouseEvent) => {
-      if (!pan.current || !scroller.current) return
-      scroller.current.scrollLeft = pan.current.startLeft - (ev.clientX - pan.current.startX)
-    }
-    const onUp = () => {
-      pan.current = null
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    e.preventDefault()
-  }
-
+  // Columns always fit the page (no horizontal scroll); no surfaces — just a
+  // header pill per column with the cards floating on the page background.
   return (
-    <div
-      ref={scroller}
-      className="scroll"
-      onMouseDown={onMouseDown}
-      style={{
-        display: 'flex', gap: 10, overflowX: 'auto',
-        flex: 1, minHeight: 0, paddingBottom: 4,
-        cursor: 'grab',
-      }}
-    >
+    <div style={{ display: 'flex', gap: 12, flex: 1, minHeight: 0 }}>
       {BOARD_COLUMNS.map(({ key, label, color }) => (
         <div
           key={key}
@@ -308,21 +280,29 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
             if (dragPath.current) onDrop(dragPath.current, key)
           }}
           style={{
-            ...card,
-            flex: '1 1 0', minWidth: 190,
-            display: 'flex', flexDirection: 'column',
-            padding: 9,
-            borderColor: over === key ? 'var(--accent)' : 'var(--border)',
-            transition: 'border-color 120ms ease',
+            flex: '1 1 0', minWidth: 0,
+            display: 'flex', flexDirection: 'column', gap: 10,
+            borderRadius: 'var(--radius)',
+            outline: over === key ? '1px dashed var(--accent)' : 'none',
+            outlineOffset: 4,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 4px 10px' }}>
-            <span style={{ width: 7, height: 7, borderRadius: 999, background: color, boxShadow: `0 0 8px ${color}` }} />
+          {/* Column header pill */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '7px 11px',
+            background: 'var(--bg-2)',
+            border: '1px solid var(--hairline)',
+            borderRadius: 999,
+          }}>
+            <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0, background: color, boxShadow: `0 0 8px ${color}` }} />
             <span style={{ fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
             <span className="mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--text-mute)' }}>
               {byStatus[key].length}
             </span>
           </div>
+
+          {/* Free-floating cards */}
           <div className="scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', flex: 1, minHeight: 40 }}>
             {byStatus[key].map(f => (
               <div
@@ -332,27 +312,28 @@ function Kanban({ cards, onSelect, onDrop, onQuickAdd, dragPath }: {
                 onDragEnd={() => { dragPath.current = null }}
                 onClick={() => onSelect(f)}
                 style={{
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--hairline)',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-sm)',
                   padding: '10px 11px',
                   cursor: 'pointer',
+                  boxShadow: '0 4px 14px oklch(0 0 0 / 0.18)',
                 }}
                 onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-strong)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--hairline)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)' }}
               >
                 <div style={{ fontSize: 12.5, lineHeight: 1.4, fontWeight: 450 }}>{f.title}</div>
                 <CardTags f={f} />
               </div>
             ))}
+            <button
+              onClick={() => onQuickAdd(key)}
+              className="mute"
+              style={{ padding: '7px 4px', fontSize: 11.5, borderRadius: 8, border: '1px dashed var(--hairline)', width: '100%' }}
+            >
+              +
+            </button>
           </div>
-          <button
-            onClick={() => onQuickAdd(key)}
-            className="dim"
-            style={{ marginTop: 8, padding: '7px 4px', fontSize: 11.5, borderRadius: 8, border: '1px dashed var(--hairline)', width: '100%' }}
-          >
-            + Add to {label}
-          </button>
         </div>
       ))}
     </div>
@@ -385,25 +366,10 @@ function Tag({ children, accent }: { children: React.ReactNode; accent?: boolean
 // ── Research ─────────────────────────────────────────────────────────────────
 
 function Research({ cards, onSelect }: { cards: Card[]; onSelect: (f: Card) => void }) {
-  const [accountsOpen, setAccountsOpen] = useState(false)
   const accounts = cards.filter(f => f.rtype === 'accounts')
   return (
-    <div className="scroll" style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ ...card, padding: 'var(--pad-sm)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span className="h3">Accounts</span>
-          <span className="mono dim" style={{ fontSize: 11 }}>{accounts.length}</span>
-          <button className="btn tiny ghost" style={{ marginLeft: 'auto' }} onClick={() => setAccountsOpen(v => !v)}>
-            {accountsOpen ? 'Close' : 'Open'}
-          </button>
-        </div>
-        {accountsOpen && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginTop: 12 }}>
-            {accounts.map(f => <ResearchCard key={f.path} f={f} onSelect={onSelect} />)}
-            {!accounts.length && <span className="dim" style={{ fontSize: 12.5 }}>No account notes yet.</span>}
-          </div>
-        )}
-      </div>
+    <div className="scroll" style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <AccountsShelf accounts={accounts} onSelect={onSelect} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
         {RESEARCH_BUCKETS.map(bucket => {
@@ -425,6 +391,101 @@ function Research({ cards, onSelect }: { cards: Card[]; onSelect: (f: Card) => v
           )
         })}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Accounts to study — profile-style cards grouped by which of your brands
+ * they're useful for, with the handle, link, and format at a glance.
+ */
+function AccountsShelf({ accounts, onSelect }: { accounts: Card[]; onSelect: (f: Card) => void }) {
+  const [filter, setFilter] = useState('all')
+  const shown = filter === 'all' ? accounts : accounts.filter(f => accountForList(f).includes(filter))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span className="h3">Accounts to study</span>
+        <span className="mono dim" style={{ fontSize: 11 }}>{shown.length}</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+          {[{ key: 'all', label: 'All' }, ...ACCOUNT_META].map(a => {
+            const on = filter === a.key
+            return (
+              <button
+                key={a.key}
+                onClick={() => setFilter(a.key)}
+                style={{
+                  padding: '4px 10px', borderRadius: 999, fontSize: 11,
+                  color: on ? 'var(--accent-2)' : 'var(--text-dim)',
+                  background: on ? 'var(--accent-dim)' : 'transparent',
+                  border: `1px solid ${on ? 'oklch(0.80 0.16 80 / 0.35)' : 'var(--hairline)'}`,
+                }}
+              >
+                {a.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {shown.length ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
+          {shown.map(f => {
+            const link = f.data.account_link || f.data.source || ''
+            const domain = link ? link.replace(/^https?:\/\/(www\.)?/, '').split('/')[0] : null
+            const usefulFor = accountForList(f).filter(k => ACCOUNT_META.some(a => a.key === k))
+            const format = f.data.account_format || null
+            return (
+              <div
+                key={f.path}
+                onClick={() => onSelect(f)}
+                style={{
+                  background: 'var(--surface)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)', padding: '12px 14px', cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                  transition: 'border-color 120ms ease',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-strong)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 550, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {f.title}
+                    </div>
+                    {domain && (
+                      <a
+                        href={link!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="mono"
+                        style={{ fontSize: 10, color: 'var(--accent)', textDecoration: 'none' }}
+                      >
+                        {domain} ↗
+                      </a>
+                    )}
+                  </div>
+                  {format && <Tag>{formatLabel(String(format))}</Tag>}
+                </div>
+                {usefulFor.length > 0 && (
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                    {usefulFor.map(k => <Tag key={k} accent>{accountLabel(k)}</Tag>)}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="mute" style={{
+          fontSize: 12.5, padding: '18px 0', textAlign: 'center',
+          border: '1px dashed var(--hairline)', borderRadius: 'var(--radius)',
+        }}>
+          No accounts saved{filter !== 'all' ? ` for ${accountLabel(filter)}` : ''} yet.
+        </div>
+      )}
     </div>
   )
 }

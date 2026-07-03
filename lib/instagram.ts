@@ -51,8 +51,10 @@ async function fetchGraph<T>(path: string, params: Record<string, string>): Prom
 }
 
 export function getInstagramAppCredentials() {
-  const appId = process.env.INSTAGRAM_APP_ID
-  const appSecret = process.env.INSTAGRAM_APP_SECRET
+  // FACEBOOK_APP_ID/SECRET are the legacy names (pre-rename) still set in
+  // deployed environments; accept both so existing deployments keep working.
+  const appId = process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID
+  const appSecret = process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET
   return { appId, appSecret }
 }
 

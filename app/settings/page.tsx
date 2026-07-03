@@ -88,6 +88,68 @@ function IntegrationCard({ title, sub, connected, identity, actionLabel, onActio
   )
 }
 
+function HomeServerCard() {
+  const [state, setState] = useState<{ online: boolean; configured: boolean } | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  async function check() {
+    setChecking(true)
+    try {
+      const r = await fetch('/api/home/health', { cache: 'no-store' })
+      setState(await r.json())
+    } catch {
+      setState({ online: false, configured: true })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  useEffect(() => { check() }, [])
+
+  const online = !!state?.online
+  const configured = state?.configured !== false
+
+  return (
+    <div className="card" style={{ padding: 'var(--pad)' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 10,
+          background: 'var(--bg-2)', color: online ? 'var(--ok)' : 'var(--bad)',
+          display: 'grid', placeItems: 'center',
+          border: '1px solid var(--hairline)', flexShrink: 0, fontSize: 18,
+        }}>
+          ⌂
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>Home server</div>
+            {state === null ? (
+              <span className="pill" style={{ height: 18, fontSize: 10 }}><span className="dot" /> checking…</span>
+            ) : online ? (
+              <span className="pill ok" style={{ height: 18, fontSize: 10 }}><span className="dot" /> online</span>
+            ) : (
+              <span className="pill" style={{ height: 18, fontSize: 10, color: 'var(--bad)' }}><span className="dot" style={{ background: 'var(--bad)' }} /> {configured ? 'offline' : 'not configured'}</span>
+            )}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-mute)', marginTop: 2 }}>
+            Mac mini — video storage, uploads, readback, scheduled-post heartbeat
+          </div>
+          {state !== null && !online && (
+            <div style={{ fontSize: 11.5, color: 'var(--text-2)', marginTop: 8 }}>
+              {configured
+                ? 'Turn the Mac mini on (or wake it) — the server, tunnel and workers all start automatically on boot. Then press Check.'
+                : 'Set HOME_SERVER_URL / HOME_SERVER_SECRET in Vercel and redeploy.'}
+            </div>
+          )}
+        </div>
+        <button className="btn tiny" onClick={check} disabled={checking} style={{ flexShrink: 0 }}>
+          {checking ? 'Checking…' : 'Check'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function SettingsContent() {
   const searchParams = useSearchParams()
   const [status, setStatus] = useState<ConnectionsStatus | null>(null)
@@ -226,6 +288,9 @@ function SettingsContent() {
         icon={<LogoTikTok size={20} />}
         color="oklch(0.85 0.15 200)"
       />
+
+      <SectionHead eyebrow="Infrastructure" title="Home server" />
+      <HomeServerCard />
 
       {/* Developer setup — redirect URIs to register */}
       <SectionHead eyebrow="One-time developer setup" title="Redirect URIs to register" />

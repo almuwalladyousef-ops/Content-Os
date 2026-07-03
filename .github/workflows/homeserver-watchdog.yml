@@ -1,0 +1,26 @@
+name: Home server watchdog
+
+# Pings the deployed app's home-server health proxy every 30 minutes.
+# When the home server is unreachable the job FAILS, and GitHub emails the
+# repo owner ("Run failed: Home server watchdog") — free downtime alerts
+# with no email credentials stored anywhere.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check home server health
+        run: |
+          body=$(curl -s --max-time 20 "https://contentos-flame.vercel.app/api/home/health" || echo '{}')
+          echo "response: $body"
+          if echo "$body" | grep -q '"online":true'; then
+            echo "Home server is ONLINE ✓"
+          else
+            echo "::error::Home server is DOWN or not configured — turn the Mac mini on (everything auto-starts on boot)."
+            exit 1
+          fi

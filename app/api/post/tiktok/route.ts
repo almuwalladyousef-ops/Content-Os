@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       privacy: privacy || 'SELF_ONLY',
       size,
     })
-    return NextResponse.json({ publishId: result.publishId })
+    return NextResponse.json({ publishId: result.publishId, draft: result.draft ?? false })
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e instanceof Error ? e.message : e) }, { status: 500 })
   }

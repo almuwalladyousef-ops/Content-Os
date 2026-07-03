@@ -238,6 +238,10 @@ export default function PostPage() {
     })
     const data = await safeJson(res)
     if (data.error) { setStatus('tiktok', 'failed', data.error); return { url: null, result: { success: false, error: data.error } } }
+    if (data.draft) {
+      setStatus('tiktok', 'success', 'sent as a draft — open TikTok, it\'s in your inbox/notifications ready to post')
+      return { url: null, result: { success: true } }
+    }
     setStatus('tiktok', 'success')
     return { url: null, result: { success: true } }
   }

@@ -138,7 +138,12 @@ export async function postInstagramReel(opts: {
   return { postId: publishData.id, postUrl: `https://www.instagram.com/p/${publishData.id}/` }
 }
 
-export interface TikTokResult { publishId: string }
+export interface TikTokResult {
+  publishId: string
+  /** True when the video went to the user's TikTok inbox as a draft
+   *  (unaudited-app fallback) instead of being published directly. */
+  draft?: boolean
+}
 
 export async function postTikTokVideo(opts: {
   accessToken: string
@@ -153,6 +158,8 @@ export async function postTikTokVideo(opts: {
     'Content-Type': 'application/json; charset=UTF-8',
   }
 
+  const sourceInfo = { source: 'FILE_UPLOAD', video_size: size, chunk_size: size, total_chunk_count: 1 }
+
   const initRes = await fetch('https://open.tiktokapis.com/v2/post/publish/video/init/', {
     method: 'POST',
     headers,
@@ -164,10 +171,25 @@ export async function postTikTokVideo(opts: {
         disable_comment: false,
         disable_stitch: false,
       },
-      source_info: { source: 'FILE_UPLOAD', video_size: size, chunk_size: size, total_chunk_count: 1 },
+      source_info: sourceInfo,
     }),
   })
-  const initData = await initRes.json()
+  let initData = await initRes.json()
+  let draft = false
+
+  // Unaudited apps can't direct-post to public accounts. Fall back to the
+  // inbox (draft) upload — allowed pre-audit: the video lands in the user's
+  // TikTok inbox and they publish it from the app.
+  if (initData.error?.code === 'unaudited_client_can_only_post_to_private_accounts') {
+    draft = true
+    const inboxRes = await fetch('https://open.tiktokapis.com/v2/post/publish/inbox/video/init/', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ source_info: sourceInfo }),
+    })
+    initData = await inboxRes.json()
+  }
+
   if (initData.error?.code !== 'ok' && initData.error?.code !== undefined) {
     throw new Error(`TikTok init error: ${JSON.stringify(initData.error)}`)
   }
@@ -198,7 +220,8 @@ export async function postTikTokVideo(opts: {
     })
     const statusData = await statusRes.json()
     const pubStatus = statusData.data?.status
-    if (pubStatus === 'PUBLISH_COMPLETE') return { publishId: publish_id }
+    if (pubStatus === 'PUBLISH_COMPLETE') return { publishId: publish_id, draft }
+    if (pubStatus === 'SEND_TO_USER_INBOX') return { publishId: publish_id, draft: true }
     if (pubStatus === 'FAILED') throw new Error(`TikTok publish failed: ${JSON.stringify(statusData)}`)
     attempts++
   }

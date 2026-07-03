@@ -1,53 +1,34 @@
 'use client'
-import { useEffect, useState } from 'react'
-import {
-  getStoredWorkspaceId,
-  resolveActiveWorkspace,
-  storeWorkspaceId,
-  WORKSPACES_CHANGED_EVENT,
-} from './WorkspaceSwitcher'
+import { useCallback, useEffect, useState } from 'react'
 
+// The active workspace is the same one the main sidebar switcher controls
+// (lib/connections.ts, cookie-backed). Switching it triggers a full page
+// reload, so this hook just needs to fetch the current state on mount.
 export default function useActiveWorkspace() {
   const [workspaces, setWorkspaces] = useState([])
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState(null)
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true)
 
-  async function loadWorkspaces() {
+  const loadWorkspaces = useCallback(async () => {
     setLoadingWorkspaces(true)
     try {
-      const nextWorkspaces = await fetch('/api/dm/workspaces').then(r => r.json())
-      const active = resolveActiveWorkspace(nextWorkspaces, getStoredWorkspaceId())
-      setWorkspaces(nextWorkspaces)
-      setActiveWorkspaceId(active?.id || null)
-      if (active) storeWorkspaceId(active.id)
+      const next = await fetch('/api/dm/workspaces').then(r => r.json())
+      setWorkspaces(next)
     } finally {
       setLoadingWorkspaces(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadWorkspaces().catch(() => setLoadingWorkspaces(false))
+  }, [loadWorkspaces])
 
-    function handleWorkspaceChange(event) {
-      setActiveWorkspaceId(event.detail?.id || getStoredWorkspaceId())
-    }
-
-    window.addEventListener('workspacechange', handleWorkspaceChange)
-    window.addEventListener(WORKSPACES_CHANGED_EVENT, loadWorkspaces)
-    return () => {
-      window.removeEventListener('workspacechange', handleWorkspaceChange)
-      window.removeEventListener(WORKSPACES_CHANGED_EVENT, loadWorkspaces)
-    }
-  }, [])
-
-  const activeWorkspace = resolveActiveWorkspace(workspaces, activeWorkspaceId)
+  const activeWorkspace = workspaces.find(w => w.active) || null
 
   return {
     workspaces,
     activeWorkspace,
-    activeWorkspaceId: activeWorkspace?.id || activeWorkspaceId,
+    activeWorkspaceId: activeWorkspace?.id || null,
     loadingWorkspaces,
-    setActiveWorkspaceId,
     reloadWorkspaces: loadWorkspaces,
   }
 }

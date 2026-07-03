@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import axios from 'axios'
 import { getAccountsWithStoredTokens } from '@/lib/dm/accounts'
-import { getStoredTokenRecord } from '@/lib/dm/driveDB'
-import { getWorkspaces } from '@/lib/dm/workspaces'
+import { getWorkspaces, getInstagramConnectionForWorkspace } from '@/lib/connections'
 
 const FACEBOOK_BASE = 'https://graph.facebook.com/v21.0'
 const INSTAGRAM_BASE = 'https://graph.instagram.com/v21.0'
@@ -27,17 +26,19 @@ export async function GET(req) {
   const workspaceId = searchParams.get('workspaceId')
 
   if (workspaceId) {
-    const workspaces = await getWorkspaces()
-    const workspace = workspaces.find(w => w.id === workspaceId)
+    const state = await getWorkspaces()
+    const workspace = state.workspaces.find(w => w.id === workspaceId)
     if (!workspace) return NextResponse.json([])
 
-    const tokenKey = workspace.tokenKey || `WORKSPACE_TOKEN:${workspace.id}`
-    const stored = await getStoredTokenRecord(tokenKey)
-    if (!workspace.igId || !stored?.token) {
+    const ig = await getInstagramConnectionForWorkspace(workspaceId)
+    const accounts = await getAccountsWithStoredTokens()
+    const account = ig ? accounts.find(a => a.igId === ig.accountId) : null
+
+    if (!ig || !account) {
       return NextResponse.json([{
         name: workspace.name,
-        igId: workspace.igId || null,
-        key: tokenKey,
+        igId: ig?.accountId || null,
+        key: workspace.id,
         workspaceId: workspace.id,
         authType: 'instagram',
         valid: false,
@@ -46,18 +47,11 @@ export async function GET(req) {
       }])
     }
 
-    const account = {
-      name: workspace.accountName || workspace.igUsername || workspace.name,
-      igId: workspace.igId,
-      key: tokenKey,
-      token: stored.token,
-      workspaceId: workspace.id,
-    }
     const { valid, error } = await checkToken(account)
     return NextResponse.json([{
       name: account.name,
       igId: account.igId,
-      key: tokenKey,
+      key: account.key,
       workspaceId: workspace.id,
       authType: account.token?.startsWith('IGA') ? 'instagram' : 'facebook',
       valid,

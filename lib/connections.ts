@@ -181,6 +181,35 @@ export async function getInstagramConnection(): Promise<{
   return { accessToken: conn.access_token, accountId: conn.account_id, username: conn.username }
 }
 
+/** Reads the Instagram connection for a specific workspace id, not just the active one. */
+export async function getInstagramConnectionForWorkspace(workspaceId: string): Promise<{
+  accountId: string
+  username?: string
+} | null> {
+  const jar = await cookies()
+  const val = jar.get(scopedName(INSTAGRAM_COOKIE, workspaceId))?.value
+  if (!val) return null
+  try {
+    const conn = JSON.parse(decrypt(val)) as InstagramConnection
+    if (!conn?.access_token || !conn?.account_id) return null
+    return { accountId: conn.account_id, username: conn.username }
+  } catch {
+    return null
+  }
+}
+
+/** All workspaces annotated with the Instagram account (if any) connected to each. */
+export async function getWorkspacesWithInstagram(): Promise<Array<Workspace & {
+  igId: string | null
+  igUsername: string | null
+}>> {
+  const state = await getWorkspaces()
+  return Promise.all(state.workspaces.map(async w => {
+    const ig = await getInstagramConnectionForWorkspace(w.id)
+    return { ...w, igId: ig?.accountId ?? null, igUsername: ig?.username ?? null }
+  }))
+}
+
 // ── TikTok (Content Posting API) ────────────────────────────────────────────
 
 const TIKTOK_COOKIE = 'cms_tiktok'

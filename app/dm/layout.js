@@ -2,8 +2,6 @@
 import '@/styles/dm.css'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import WorkspaceSwitcher from '@/components/dm/WorkspaceSwitcher'
-import useActiveWorkspace from '@/components/dm/useActiveWorkspace'
 
 const DM_NAV = [
   { href: '/dm', label: 'Dashboard' },
@@ -11,9 +9,10 @@ const DM_NAV = [
   { href: '/dm/settings', label: 'Settings' },
 ]
 
+// Workspace switching lives solely in the main sidebar now (components/Sidebar.tsx) —
+// DM automation shares that same workspace, so it doesn't need its own picker here.
 export default function DmLayout({ children }) {
   const pathname = usePathname()
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, loadingWorkspaces } = useActiveWorkspace()
 
   function isActive(href) {
     return href === '/dm' ? pathname === '/dm' : pathname.startsWith(href)
@@ -29,14 +28,6 @@ export default function DmLayout({ children }) {
             </Link>
           ))}
         </nav>
-        {!loadingWorkspaces && workspaces.length > 0 && (
-          <WorkspaceSwitcher
-            workspaces={workspaces}
-            activeWorkspaceId={activeWorkspaceId}
-            onChange={setActiveWorkspaceId}
-            variant="sidebar"
-          />
-        )}
       </div>
       {children}
     </div>

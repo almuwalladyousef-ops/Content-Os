@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import MessageBuilder from './MessageBuilder'
 import ReelPicker from './ReelPicker'
-import { getStoredWorkspaceId, resolveActiveWorkspace, storeWorkspaceId } from './WorkspaceSwitcher'
 import { confirmDialog, alertDialog } from '@/lib/dm/dialog'
 
 const DEFAULT_TWO_STEP_PROMPT = 'Want me to send the link?'
@@ -108,13 +107,11 @@ export default function RuleEditor({ initial }) {
     ]).then(([wss, rls]) => {
       setWorkspaces(wss)
       setAllRules(rls)
-      const storedId = getStoredWorkspaceId()
       const inferred = initial?.workspaceId
         ? wss.find(w => w.id === initial.workspaceId)
         : wss.find(w => w.igId === initial?.igId)
-      const workspace = isNew ? resolveActiveWorkspace(wss, storedId) : inferred
+      const workspace = isNew ? wss.find(w => w.active) : inferred
       if (workspace) {
-        if (isNew) storeWorkspaceId(workspace.id)
         setRule(r => ({
           ...r,
           workspaceId: workspace.id,
@@ -125,24 +122,6 @@ export default function RuleEditor({ initial }) {
       }
     }).catch(() => {})
   }, [])
-
-  useEffect(() => {
-    function handleWorkspaceChange(event) {
-      if (!isNew) return
-      const workspace = workspaces.find(w => w.id === event.detail?.id)
-      if (!workspace) return
-      setRule(r => ({
-        ...r,
-        workspaceId: workspace.id,
-        igId: workspace.igId,
-        targetReels: r.igId === workspace.igId ? r.targetReels : [],
-        applyToAll: r.igId === workspace.igId ? r.applyToAll : false,
-      }))
-    }
-
-    window.addEventListener('workspacechange', handleWorkspaceChange)
-    return () => window.removeEventListener('workspacechange', handleWorkspaceChange)
-  }, [isNew, workspaces])
 
   const overlaps = allRules.filter(r => {
     if (r.id === rule.id || !r.active) return false

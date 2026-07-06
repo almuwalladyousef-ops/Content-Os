@@ -171,6 +171,9 @@ function SettingsContent() {
   if (searchParams.get('handoff_done') === '1') {
     banners.push({ ok: true, msg: 'All set — you can close this tab and return to the Content OS app.' })
   }
+  if (searchParams.get('handoff_failed') === '1') {
+    banners.push({ ok: false, msg: 'Connected in this browser, but handing the connection to the Content OS app failed (server storage). The app will not show it as connected.' })
+  }
 
 
   function load() {

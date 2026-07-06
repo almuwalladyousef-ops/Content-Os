@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { takeHandoff } from '@/lib/handoff'
+import { takeHandoff, stashHandoff } from '@/lib/handoff'
 import {
   saveGoogleAccount,
   saveInstagramConnection,
@@ -20,6 +20,24 @@ import {
  * the read.
  */
 export async function GET(req: NextRequest) {
+  // Storage self-test (no secrets exposed): round-trips a dummy entry so a
+  // broken Drive-DB config shows up here instead of as a silent hand-off fail.
+  if (req.nextUrl.searchParams.get('selftest') === '1') {
+    const diag: Record<string, unknown> = {
+      driveCreds: !!(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY),
+      folderOrFileId: !!(process.env.DRIVE_DB_FOLDER_ID || process.env.DRIVE_DB_HANDOFF_FILE_ID),
+    }
+    const testNonce = crypto.randomUUID()
+    try {
+      await stashHandoff(testNonce, 'google', { selftest: true })
+      const back = await takeHandoff(testNonce)
+      diag.roundtrip = back ? 'ok' : 'stash_read_back_empty'
+    } catch (e) {
+      diag.roundtrip = `error: ${e instanceof Error ? e.message : String(e)}`
+    }
+    return NextResponse.json(diag)
+  }
+
   const nonce = req.nextUrl.searchParams.get('nonce') ?? ''
   const payload = await takeHandoff(nonce)
   if (!payload) return NextResponse.json({ pending: true })

@@ -30,30 +30,50 @@ export default function DesktopBackButton() {
   return (
     <button
       onClick={() => { window.location.href = CONTENT_OS_URL }}
-      title="Back to Content OS"
+      title="Switch to Content OS"
+      aria-label="Switch to Content OS"
       style={{
-        position: 'fixed',
-        left: 12,
-        bottom: 12,
-        zIndex: 99999,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '7px 12px',
-        borderRadius: 999,
-        fontSize: 12.5,
-        fontWeight: 500,
-        color: 'var(--text)',
+        display: 'grid',
+        placeItems: 'center',
+        width: 26,
+        height: 26,
+        padding: 0,
+        flex: 'none',
         background: 'var(--bg-2)',
         border: '1px solid var(--border)',
-        boxShadow: '0 8px 24px oklch(0 0 0 / 0.4)',
+        borderRadius: 7,
+        color: 'var(--text-dim)',
         cursor: 'pointer',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
+        transition: 'background 150ms ease, color 150ms ease, border-color 150ms ease, transform 100ms ease',
+      }}
+      onMouseEnter={e => {
+        const el = e.currentTarget
+        el.style.background = 'var(--surface-3)'
+        el.style.color = 'var(--accent)'
+        el.style.borderColor = 'var(--accent-glow)'
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget
+        el.style.background = 'var(--bg-2)'
+        el.style.color = 'var(--text-dim)'
+        el.style.borderColor = 'var(--border)'
+        el.style.transform = 'scale(1)'
+      }}
+      onMouseDown={e => {
+        const el = e.currentTarget
+        el.style.background = 'var(--accent)'
+        el.style.color = 'oklch(0.18 0.013 255)'
+        el.style.transform = 'scale(.92)'
+      }}
+      onMouseUp={e => {
+        const el = e.currentTarget
+        el.style.transform = 'scale(1)'
       }}
     >
-      <span style={{ fontSize: 14, lineHeight: 1 }}>‹</span>
-      Content OS
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15, display: 'block' }}>
+        <path d="M4 8h13l-4-4M4 8l4 4" />
+        <path d="M20 16H7l4 4M20 16l-4-4" />
+      </svg>
     </button>
   )
 }

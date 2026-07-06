@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Sidebar from './Sidebar'
-import DesktopBackButton from './DesktopBackButton'
 import { IconSidebar } from './Icons'
 
 interface ConnectionsStatus {
@@ -103,8 +102,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       >
         {children}
       </main>
-
-      <DesktopBackButton />
     </div>
   )
 }

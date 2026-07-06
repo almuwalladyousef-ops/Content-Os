@@ -15,6 +15,7 @@ import {
 
 type NavItem = { href: string; label: string; Icon: (p: { size?: number }) => React.ReactElement; shortcut?: string }
 import WorkspaceSwitcher from './WorkspaceSwitcher'
+import DesktopBackButton from './DesktopBackButton'
 
 interface SidebarProps {
   navOpen: boolean
@@ -75,8 +76,11 @@ export default function Sidebar({ navOpen, isMobile, onToggle, pathname, connect
       }}
     >
       {/* Logo row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px 10px' }}>
-        <Logo />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '0 6px 10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <Logo />
+          <DesktopBackButton />
+        </div>
         <button
           onClick={onToggle}
           title="Close sidebar (⌘B)"

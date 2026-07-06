@@ -3,6 +3,7 @@ import { getBaseUrl } from '@/lib/oauth'
 
 // Google connect — backs YouTube, Drive, Analytics and Gmail notifications.
 export function GET(req: NextRequest) {
+  const handoff = req.nextUrl.searchParams.get('handoff') ?? ''
   if (!process.env.GOOGLE_CLIENT_ID) {
     return NextResponse.redirect(
       new URL(`/settings?yt_error=${encodeURIComponent('Google app not configured. Set GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.')}`, req.url)
@@ -26,6 +27,9 @@ export function GET(req: NextRequest) {
     access_type: 'offline',
     prompt: 'consent',
   })
+  // Desktop hand-off: carry the app-generated nonce through OAuth state so
+  // the callback (running in Chrome) can stash the connection for the app.
+  if (handoff) params.set('state', `ho_${handoff}`)
 
   return NextResponse.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`)
 }

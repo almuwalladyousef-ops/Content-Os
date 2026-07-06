@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { saveTikTokConnection } from '@/lib/connections'
+import { saveTikTokConnection, type TikTokConnection } from '@/lib/connections'
 import { getBaseUrl } from '@/lib/oauth'
+import { nonceFromState, stashHandoff } from '@/lib/handoff'
 
 export async function GET(req: NextRequest) {
   const base = getBaseUrl(req)
@@ -42,12 +43,18 @@ export async function GET(req: NextRequest) {
     display_name = userData.data?.user?.display_name ?? ''
   } catch { /* non-fatal */ }
 
-  await saveTikTokConnection({
+  const conn: TikTokConnection = {
     access_token: accessToken,
     refresh_token: refreshToken,
     expires_at: Date.now() + expiresIn * 1000,
     display_name,
-  })
+  }
+  await saveTikTokConnection(conn)
 
-  return NextResponse.redirect(new URL('/settings?tt_connected=1', req.url))
+  // Desktop hand-off: this ran in Chrome, so also stash the connection for the
+  // Content OS app (polling /api/auth/handoff) to adopt into its own session.
+  const nonce = nonceFromState(req.nextUrl.searchParams.get('state'))
+  if (nonce) await stashHandoff(nonce, 'tiktok', conn)
+
+  return NextResponse.redirect(new URL(`/settings?tt_connected=1${nonce ? '&handoff_done=1' : ''}`, req.url))
 }

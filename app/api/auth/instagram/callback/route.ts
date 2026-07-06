@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { saveInstagramConnection } from '@/lib/connections'
+import { saveInstagramConnection, type InstagramConnection } from '@/lib/connections'
+import { nonceFromState, stashHandoff } from '@/lib/handoff'
 import {
   exchangeInstagramCodeForToken,
   exchangeForLongLivedToken,
@@ -45,12 +46,18 @@ export async function GET(req: NextRequest) {
   }
 
   // (a) Encrypted cookie — posting/analytics UI (workspace-scoped).
-  await saveInstagramConnection({
+  const conn: InstagramConnection = {
     access_token: accessToken,
     account_id: accountId,
     username: profile.username,
     expires_at: expiresAt,
-  })
+  }
+  await saveInstagramConnection(conn)
+
+  // Desktop hand-off: this ran in Chrome, so also stash the connection for the
+  // Content OS app (polling /api/auth/handoff) to adopt into its own session.
+  const nonce = nonceFromState(req.nextUrl.searchParams.get('state'))
+  if (nonce) await stashHandoff(nonce, 'instagram', conn)
 
   // (b) DM engine store — webhooks fire with no cookies, so the DM automation
   // reads tokens server-side from the Drive DB (same shape as triggerdm's
@@ -75,5 +82,5 @@ export async function GET(req: NextRequest) {
     console.error('[instagram] DM token dual-write failed:', e)
   }
 
-  return NextResponse.redirect(new URL('/settings?ig_connected=1', req.url))
+  return NextResponse.redirect(new URL(`/settings?ig_connected=1${nonce ? '&handoff_done=1' : ''}`, req.url))
 }

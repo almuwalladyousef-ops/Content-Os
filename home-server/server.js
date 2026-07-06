@@ -138,6 +138,23 @@ app.get('/open', (req, res) => {
   res.json({ ok: true });
 });
 
+// Desktop OAuth bridge: the Poster's settings page (in the app's webview)
+// navigates here to start a connect. We open the OAuth URL in Chrome — where
+// providers allow login — and bounce the webview straight back to the Poster
+// settings page, which polls the hand-off endpoint until Chrome finishes.
+app.get('/connect', (req, res) => {
+  const url = String(req.query.url || '');
+  const back = String(req.query.back || '');
+  if (!/^https:\/\//i.test(url) || !/^https:\/\//i.test(back)) {
+    return res.status(400).send('invalid url');
+  }
+  const { execFile } = require('child_process');
+  execFile('open', ['-a', 'Google Chrome', url], (err) => {
+    if (err) execFile('open', [url], () => {});
+  });
+  res.redirect(back);
+});
+
 // Current vault path
 app.get('/api/vault', (req, res) => res.json({ path: getVault() }));
 

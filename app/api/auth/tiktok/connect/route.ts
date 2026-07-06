@@ -19,7 +19,6 @@ export async function GET(req: NextRequest) {
   // set needed to post. Add "video.list" (for analytics) via TIKTOK_SCOPES only
   // once your app is approved for it.
   const scope = process.env.TIKTOK_SCOPES?.trim() || 'user.info.basic,video.publish,video.upload'
-  const handoff = req.nextUrl.searchParams.get('handoff') ?? ''
   const params = new URLSearchParams({
     client_key: process.env.TIKTOK_CLIENT_KEY,
     scope,
@@ -29,8 +28,6 @@ export async function GET(req: NextRequest) {
     // actually lets you switch accounts (TikTok otherwise re-approves silently).
     force_login: 'true',
   })
-  // Desktop hand-off nonce (see lib/handoff.ts) — echoed back on the callback.
-  if (handoff) params.set('state', `ho_${handoff}`)
 
   return NextResponse.redirect(`https://www.tiktok.com/v2/auth/authorize/?${params}`)
 }

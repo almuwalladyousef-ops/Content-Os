@@ -166,15 +166,6 @@ function SettingsContent() {
   pushBanner('yt_connected', 'yt_error', 'YouTube')
   pushBanner('ig_connected', 'ig_error', 'Instagram')
   pushBanner('tt_connected', 'tt_error', 'TikTok')
-  // This tab is the Chrome side of a desktop hand-off — the app picks the
-  // connection up on its own, so tell the user to head back.
-  if (searchParams.get('handoff_done') === '1') {
-    banners.push({ ok: true, msg: 'All set — you can close this tab and return to the Content OS app.' })
-  }
-  if (searchParams.get('handoff_failed') === '1') {
-    banners.push({ ok: false, msg: 'Connected in this browser, but handing the connection to the Content OS app failed (server storage). The app will not show it as connected.' })
-  }
-
 
   function load() {
     fetch('/api/auth/status')
@@ -201,52 +192,6 @@ function SettingsContent() {
     tiktok: '/api/auth/tiktok/connect',
   }
 
-  // ── Desktop (Content OS app) hand-off ─────────────────────────────────────
-  // OAuth providers refuse to load inside the app's WKWebView, so in desktop
-  // mode Connect opens Chrome via the local home-server and this page polls
-  // /api/auth/handoff until the Chrome-side callback stashes the connection,
-  // then adopts it into this session. See lib/handoff.ts.
-  const DESKTOP_FLAG = 'contentos:desktop'
-  const LOCAL_BRIDGE = 'http://localhost:3737'
-  const isDesktop = () =>
-    typeof window !== 'undefined' && localStorage.getItem(DESKTOP_FLAG) === '1'
-
-  const [waitingFor, setWaitingFor] = useState<Platform | null>(null)
-  const [waitTimedOut, setWaitTimedOut] = useState(false)
-
-  const handoffNonce = searchParams.get('handoff')
-  const handoffPlatform = searchParams.get('hp') as Platform | null
-
-  useEffect(() => {
-    if (!handoffNonce || !handoffPlatform) return
-    setWaitingFor(handoffPlatform)
-    setWaitTimedOut(false)
-    let stopped = false
-    const started = Date.now()
-    const tick = async () => {
-      if (stopped) return
-      if (Date.now() - started > 6 * 60_000) {
-        setWaitingFor(null)
-        setWaitTimedOut(true)
-        return
-      }
-      try {
-        const r = await fetch(`/api/auth/handoff?nonce=${encodeURIComponent(handoffNonce)}`, { cache: 'no-store' })
-        const j = await r.json()
-        if (j.adopted) {
-          setWaitingFor(null)
-          load()
-          window.history.replaceState(null, '', '/settings')
-          return
-        }
-      } catch { /* keep polling */ }
-      if (!stopped) setTimeout(tick, 2500)
-    }
-    tick()
-    return () => { stopped = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handoffNonce, handoffPlatform])
-
   const redirectUris: { label: string; path: string; where: string }[] = [
     { label: 'Google', path: '/api/auth/callback', where: 'Google Cloud → Credentials → OAuth client → Authorized redirect URIs' },
     { label: 'Instagram', path: '/api/auth/instagram/callback', where: 'Meta app → Instagram → API setup with Instagram Login → Business login settings → Redirect URIs' },
@@ -254,18 +199,8 @@ function SettingsContent() {
   ]
 
   function connect(platform: Platform) {
-    if (isDesktop()) {
-      // Route through the local home-server: it opens Chrome at the OAuth URL
-      // and bounces this webview back here with the nonce to poll on.
-      const nonce = crypto.randomUUID()
-      const authUrl = `${window.location.origin}${connectUrl[platform]}?handoff=${nonce}`
-      const back = `${window.location.origin}/settings?handoff=${nonce}&hp=${platform}`
-      window.location.href = `${LOCAL_BRIDGE}/connect?url=${encodeURIComponent(authUrl)}&back=${encodeURIComponent(back)}`
-      return
-    }
     window.location.href = connectUrl[platform]
   }
-
 
   async function disconnect(platform: Platform, label: string) {
     if (!confirm(`Disconnect ${label}? You'll need to reconnect to post or pull analytics.`)) return
@@ -309,30 +244,6 @@ function SettingsContent() {
           {b.msg}
         </div>
       ))}
-
-      {/* Desktop hand-off status */}
-      {waitingFor && (
-        <div style={{
-          background: 'oklch(0.75 0.12 230 / 0.1)',
-          border: '1px solid oklch(0.75 0.12 230 / 0.3)',
-          color: 'oklch(0.78 0.10 230)',
-          padding: '10px 16px', borderRadius: 10, fontSize: 13,
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <span className="dot" style={{ background: 'currentColor' }} />
-          Finish connecting {waitingFor === 'youtube' ? 'YouTube' : waitingFor === 'instagram' ? 'Instagram' : 'TikTok'} in Chrome — this page updates by itself when you're done.
-        </div>
-      )}
-      {waitTimedOut && (
-        <div style={{
-          background: 'oklch(0.70 0.19 25 / 0.1)',
-          border: '1px solid oklch(0.70 0.19 25 / 0.3)',
-          color: 'var(--bad)',
-          padding: '10px 16px', borderRadius: 10, fontSize: 13,
-        }}>
-          Timed out waiting for the Chrome sign-in. Press Connect to try again.
-        </div>
-      )}
 
       <SectionHead eyebrow="One click each" title="Connect your accounts" />
       <div style={{ fontSize: 12.5, color: 'var(--text-mute)', marginTop: -8 }}>

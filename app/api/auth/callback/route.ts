@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { saveGoogleAccount, type GoogleAccount } from '@/lib/connections'
+import { saveGoogleAccount } from '@/lib/connections'
 import { getBaseUrl } from '@/lib/oauth'
-import { nonceFromState, stashHandoff } from '@/lib/handoff'
 
 export async function GET(req: NextRequest) {
   const base = getBaseUrl(req)
@@ -33,26 +32,12 @@ export async function GET(req: NextRequest) {
   })
   const user = await userRes.json()
 
-  const account: GoogleAccount = {
+  await saveGoogleAccount({
     email: user.email,
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in ?? 3600),
-  }
-  await saveGoogleAccount(account)
+  })
 
-  // Desktop hand-off: this ran in Chrome, so also stash the connection for the
-  // Content OS app (polling /api/auth/handoff) to adopt into its own session.
-  const nonce = nonceFromState(req.nextUrl.searchParams.get('state'))
-  let handoffOk = false
-  if (nonce) {
-    try {
-      await stashHandoff(nonce, 'google', account)
-      handoffOk = true
-    } catch (e) {
-      console.error('[handoff] stash failed:', e)
-    }
-  }
-
-  return NextResponse.redirect(new URL(`/settings?yt_connected=1${nonce ? (handoffOk ? '&handoff_done=1' : '&handoff_failed=1') : ''}`, req.url))
+  return NextResponse.redirect(new URL('/settings?yt_connected=1', req.url))
 }

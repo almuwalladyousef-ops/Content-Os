@@ -16,7 +16,5 @@ export async function GET(req: NextRequest) {
   }
 
   const redirectUri = `${getBaseUrl(req)}/api/auth/instagram/callback`
-  // Desktop hand-off nonce (see lib/handoff.ts) — echoed back on the callback.
-  const handoff = req.nextUrl.searchParams.get('handoff') ?? ''
-  return NextResponse.redirect(instagramAuthorizeUrl({ appId, redirectUri, state: handoff ? `ho_${handoff}` : undefined }))
+  return NextResponse.redirect(instagramAuthorizeUrl({ appId, redirectUri }))
 }

@@ -11,7 +11,6 @@ import {
   IconSidebar,
   IconLink,
   IconHeadphones,
-  IconLayout,
 } from './Icons'
 
 type NavItem = { href: string; label: string; Icon: (p: { size?: number }) => React.ReactElement; shortcut?: string }
@@ -36,7 +35,6 @@ const MAIN_NAV = [
 ]
 
 const TOOLS_NAV = [
-  { href: '/board',      label: 'Board',      Icon: IconLayout },
   { href: '/linkscribe', label: 'LinkScribe', Icon: IconLink },
   { href: '/readback',   label: 'Readback',   Icon: IconHeadphones },
 ]

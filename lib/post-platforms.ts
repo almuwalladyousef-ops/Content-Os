@@ -163,18 +163,21 @@ export async function postXVideo(opts: {
     return new Error(`X ${step} error: ${msg}`)
   }
 
-  // 1: INIT
-  const initForm = new FormData()
-  initForm.set('command', 'INIT')
-  initForm.set('media_type', type || 'video/mp4')
-  initForm.set('total_bytes', String(size))
-  initForm.set('media_category', 'tweet_video')
-  const initRes = await fetch(uploadUrl, { method: 'POST', headers: auth, body: initForm })
+  // 1: initialize
+  const initRes = await fetch(`${uploadUrl}/initialize`, {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      media_type: type || 'video/mp4',
+      total_bytes: size,
+      media_category: 'tweet_video',
+    }),
+  })
   const initData = await initRes.json()
   const mediaId = initData.data?.id
   if (!mediaId) throw xError('media init', initData)
 
-  // 2: APPEND in ≤4MB chunks (X caps append segments at 5MB)
+  // 2: append in ≤4MB chunks (X caps append segments at 5MB)
   const blobRes = await fetch(blobUrl)
   if (!blobRes.ok) throw new Error('Failed to fetch video from blob storage')
   const bytes = new Uint8Array(await blobRes.arrayBuffer())
@@ -182,19 +185,14 @@ export async function postXVideo(opts: {
   for (let i = 0; i * CHUNK < bytes.length; i++) {
     const chunk = bytes.subarray(i * CHUNK, Math.min((i + 1) * CHUNK, bytes.length))
     const form = new FormData()
-    form.set('command', 'APPEND')
-    form.set('media_id', mediaId)
     form.set('segment_index', String(i))
     form.set('media', new Blob([chunk]))
-    const res = await fetch(uploadUrl, { method: 'POST', headers: auth, body: form })
+    const res = await fetch(`${uploadUrl}/${mediaId}/append`, { method: 'POST', headers: auth, body: form })
     if (!res.ok) throw xError('media append', await res.json().catch(() => res.statusText))
   }
 
-  // 3: FINALIZE
-  const finForm = new FormData()
-  finForm.set('command', 'FINALIZE')
-  finForm.set('media_id', mediaId)
-  const finRes = await fetch(uploadUrl, { method: 'POST', headers: auth, body: finForm })
+  // 3: finalize
+  const finRes = await fetch(`${uploadUrl}/${mediaId}/finalize`, { method: 'POST', headers: auth })
   const finData = await finRes.json()
   if (!finData.data?.id) throw xError('media finalize', finData)
 

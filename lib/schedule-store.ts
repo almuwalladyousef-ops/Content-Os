@@ -15,12 +15,13 @@ import { deleteFile } from './home-storage'
 
 const QUEUE_SECTION = 'schedule'
 
-export type Platform = 'youtube' | 'instagram' | 'tiktok'
+export type Platform = 'youtube' | 'instagram' | 'tiktok' | 'x'
 
 export interface TokenSnapshot {
   google?: { access_token: string; refresh_token: string; expires_at: number; email: string }
   instagram?: { access_token: string; account_id: string; username?: string }
   tiktok?: { access_token: string; refresh_token?: string; expires_at?: number }
+  x?: { access_token: string; refresh_token?: string; expires_at?: number; username?: string }
 }
 
 export interface PlatformOutcome {

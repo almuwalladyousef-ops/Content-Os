@@ -248,9 +248,16 @@ export const LogoTikTok = ({ size = 16 }: { size?: number }) => (
   </svg>
 )
 
+export const LogoX = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M17.7 3H20.6L14.2 10.3L21.7 21H15.8L11.2 14.9L5.9 21H3L9.8 13.2L2.6 3H8.6L12.8 8.6L17.7 3ZM16.7 19.2H18.3L7.7 4.7H6L16.7 19.2Z" />
+  </svg>
+)
+
 export function PlatformIcon({ platform, size = 16 }: { platform: string; size?: number }) {
   if (platform === 'youtube') return <LogoYouTube size={size} />
   if (platform === 'instagram') return <LogoInstagram size={size} />
   if (platform === 'tiktok') return <LogoTikTok size={size} />
+  if (platform === 'x') return <LogoX size={size} />
   return null
 }

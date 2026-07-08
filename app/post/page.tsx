@@ -9,7 +9,7 @@ import {
 } from '@/components/Icons'
 import { PostStatus } from '@/lib/types'
 
-type Platform = 'youtube' | 'instagram' | 'tiktok'
+type Platform = 'youtube' | 'instagram' | 'tiktok' | 'x'
 type VideoType = 'short' | 'long'
 
 interface PlatStatus { state: PostStatus; message: string }
@@ -17,6 +17,7 @@ const initialStatus = (): Record<Platform, PlatStatus> => ({
   youtube:   { state: 'idle', message: '' },
   instagram: { state: 'idle', message: '' },
   tiktok:    { state: 'idle', message: '' },
+  x:         { state: 'idle', message: '' },
 })
 
 async function safeJson(res: Response) {
@@ -97,6 +98,7 @@ const PLATFORM_META = {
   youtube:   { name: 'YouTube',   color: 'oklch(0.68 0.21 25)' },
   instagram: { name: 'Instagram', color: 'oklch(0.70 0.20 340)' },
   tiktok:    { name: 'TikTok',    color: 'oklch(0.85 0.15 200)' },
+  x:         { name: 'X',         color: 'oklch(0.92 0 0)' },
 }
 
 function PlatformToggle({ platform, enabled, locked, onToggle, detail }: {
@@ -150,7 +152,7 @@ export default function PostPage() {
   const [caption, setCaption] = useState('')
   const [ytCaption, setYtCaption] = useState('')
   const [hashtags, setHashtags] = useState<string[]>([])
-  const [enabled, setEnabled] = useState({ youtube: true, instagram: true, tiktok: true })
+  const [enabled, setEnabled] = useState({ youtube: true, instagram: true, tiktok: true, x: true })
   const [privacy, setPrivacy] = useState('public')
   // Unaudited TikTok apps can only post privately (SELF_ONLY); default to that
   // so posting works out of the box. Switch to Public once your app is audited.
@@ -187,8 +189,8 @@ export default function PostPage() {
   function selectVideoType(nextType: VideoType) {
     setVideoType(nextType)
     setEnabled(nextType === 'long'
-      ? { youtube: true, instagram: false, tiktok: false }
-      : { youtube: true, instagram: true, tiktok: true }
+      ? { youtube: true, instagram: false, tiktok: false, x: false }
+      : { youtube: true, instagram: true, tiktok: true, x: true }
     )
   }
 
@@ -196,7 +198,7 @@ export default function PostPage() {
     setStatuses(s => ({ ...s, [p]: { state, message } }))
   }
   function setAllStatus(state: PostStatus, message = '') {
-    setStatuses({ youtube: { state, message }, instagram: { state, message }, tiktok: { state, message } })
+    setStatuses({ youtube: { state, message }, instagram: { state, message }, tiktok: { state, message }, x: { state, message } })
   }
 
   type PlatResult = { success: true; url?: string } | { success: false; error: string }
@@ -244,6 +246,20 @@ export default function PostPage() {
     }
     setStatus('tiktok', 'success')
     return { url: null, result: { success: true } }
+  }
+
+  async function postX(blobUrl: string): Promise<{ url: string | null; result: PlatResult }> {
+    if (!file) return { url: null, result: { success: false, error: 'No file' } }
+    setStatus('x', 'uploading', 'posting to X...')
+    const captionWithTags = caption + (hashtags.length ? '\n\n' + hashtags.join(' ') : '')
+    const res = await fetch('/api/post/x', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blobUrl, text: captionWithTags, size: file.size, type: file.type || 'video/mp4' }),
+    })
+    const data = await safeJson(res)
+    if (data.error) { setStatus('x', 'failed', data.error); return { url: null, result: { success: false, error: data.error } } }
+    setStatus('x', 'success')
+    return { url: data.postUrl ?? null, result: { success: true, url: data.postUrl ?? undefined } }
   }
 
   async function suggestCaptions() {
@@ -305,18 +321,21 @@ export default function PostPage() {
     else { setStatus('instagram', 'skipped'); promises.push(Promise.resolve({ url: null, result: { success: false, error: 'skipped' } })) }
     if (enabled.tiktok)    promises.push(postTikTok(blobUrl).catch(e => errResult(e, 'tiktok')))
     else { setStatus('tiktok', 'skipped'); promises.push(Promise.resolve({ url: null, result: { success: false, error: 'skipped' } })) }
+    if (enabled.x)         promises.push(postX(blobUrl).catch(e => errResult(e, 'x')))
+    else { setStatus('x', 'skipped'); promises.push(Promise.resolve({ url: null, result: { success: false, error: 'skipped' } })) }
 
-    const [yt, ig, tt] = await Promise.all(promises)
-    const ytUrl = yt.url; const igUrl = ig.url
+    const [yt, ig, tt, x] = await Promise.all(promises)
+    const ytUrl = yt.url; const igUrl = ig.url; const xUrl = x.url
 
     deleteMedia(fileKey)
-    fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoName: file.name, results: { youtube: yt.result, instagram: ig.result, tiktok: tt.result } }) }).catch(() => {})
+    fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoName: file.name, results: { youtube: yt.result, instagram: ig.result, tiktok: tt.result, x: x.result } }) }).catch(() => {})
 
     const platforms: Platform[] = []
     if (ytUrl) platforms.push('youtube')
     if (igUrl) platforms.push('instagram')
-    if (platforms.length > 0 || ytUrl || igUrl) {
-      await fetch('/api/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', entry: { id: crypto.randomUUID(), date: new Date().toISOString(), video_name: file.name, platforms, caption, youtube_url: ytUrl ?? undefined, instagram_url: igUrl ?? undefined } }) }).catch(() => {})
+    if (xUrl) platforms.push('x')
+    if (platforms.length > 0) {
+      await fetch('/api/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', entry: { id: crypto.randomUUID(), date: new Date().toISOString(), video_name: file.name, platforms, caption, youtube_url: ytUrl ?? undefined, instagram_url: igUrl ?? undefined, x_url: xUrl ?? undefined } }) }).catch(() => {})
     }
     setRunning(false)
   }
@@ -601,6 +620,7 @@ export default function PostPage() {
             <PlatformToggle platform="youtube"   enabled={enabled.youtube}   locked={false}                        onToggle={() => togglePlatform('youtube')}   detail={`${videoType === 'long' ? 'Video' : 'Shorts'} · ${privacy}`} />
             <PlatformToggle platform="instagram" enabled={enabled.instagram} locked={videoType === 'long'}          onToggle={() => togglePlatform('instagram')} detail="public" />
             <PlatformToggle platform="tiktok"    enabled={enabled.tiktok}    locked={videoType === 'long'}          onToggle={() => togglePlatform('tiktok')}    detail={ttPrivacy === 'PUBLIC_TO_EVERYONE' ? 'public' : ttPrivacy === 'FOLLOWER_OF_CREATOR' ? 'followers' : 'only me'} />
+            <PlatformToggle platform="x"         enabled={enabled.x}         locked={videoType === 'long'}          onToggle={() => togglePlatform('x')}         detail="public · 280 chars" />
           </div>
 
           {/* Privacy details */}
@@ -630,6 +650,14 @@ export default function PostPage() {
                 </>
               )}
             </div>
+            <div style={{ padding: 12, borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--hairline)', opacity: enabled.x ? 1 : 0.4 }}>
+              <div className="micro" style={{ marginBottom: 8 }}>X</div>
+              <div style={{ color: 'var(--text-mute)', fontSize: 12, fontStyle: 'italic', padding: '8px 4px' }}>
+                {videoType === 'long'
+                  ? 'Long-form not supported (140s max).'
+                  : 'Posts publicly. Caption is trimmed to 280 characters.'}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -640,6 +668,7 @@ export default function PostPage() {
             <StatusDot platform="youtube"   state={statuses.youtube.state}   message={statuses.youtube.message} />
             <StatusDot platform="instagram" state={statuses.instagram.state} message={statuses.instagram.message} />
             <StatusDot platform="tiktok"    state={statuses.tiktok.state}    message={statuses.tiktok.message} />
+            <StatusDot platform="x"         state={statuses.x.state}         message={statuses.x.message} />
           </div>
         </div>
 

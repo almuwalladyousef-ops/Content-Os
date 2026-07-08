@@ -297,12 +297,103 @@ export async function getTikTokConnection(): Promise<{
   return { accessToken: conn.access_token, displayName: conn.display_name }
 }
 
+// ── X / Twitter (OAuth 2.0 + PKCE) ──────────────────────────────────────────
+
+const X_COOKIE = 'cms_x'
+
+export interface XConnection {
+  access_token: string
+  refresh_token?: string
+  expires_at?: number // unix ms — X access tokens only last ~2 hours
+  username?: string
+}
+
+export async function saveXConnection(conn: XConnection): Promise<void> {
+  await writeCookie(X_COOKIE, conn)
+}
+
+export async function clearXConnection(): Promise<void> {
+  await clearCookie(X_COOKIE)
+}
+
+/** X is a confidential OAuth 2.0 client — token/revoke calls authenticate with Basic auth. */
+function xBasicAuth(): string {
+  return 'Basic ' + Buffer.from(`${process.env.X_CLIENT_ID}:${process.env.X_CLIENT_SECRET}`).toString('base64')
+}
+
+async function refreshXToken(conn: XConnection): Promise<XConnection | null> {
+  if (!conn.refresh_token) return null
+  try {
+    const res = await fetch('https://api.x.com/2/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: xBasicAuth(),
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: conn.refresh_token,
+      }),
+    })
+    const data = await res.json()
+    if (!data.access_token) return null
+    return {
+      access_token: data.access_token,
+      // X rotates refresh tokens on every refresh — always keep the newest one.
+      refresh_token: data.refresh_token ?? conn.refresh_token,
+      expires_at: Date.now() + (data.expires_in ?? 7200) * 1000,
+      username: conn.username,
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function revokeXToken(): Promise<void> {
+  const conn = await readCookie<XConnection>(X_COOKIE)
+  if (!conn?.access_token) return
+  if (!process.env.X_CLIENT_ID || !process.env.X_CLIENT_SECRET) return
+  try {
+    await fetch('https://api.x.com/2/oauth2/revoke', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: xBasicAuth(),
+      },
+      body: new URLSearchParams({
+        token: conn.refresh_token || conn.access_token,
+        token_type_hint: conn.refresh_token ? 'refresh_token' : 'access_token',
+      }),
+    })
+  } catch { /* best effort */ }
+}
+
+export async function getXConnection(): Promise<{
+  accessToken: string
+  username?: string
+} | null> {
+  const conn = await readCookie<XConnection>(X_COOKIE)
+  if (!conn?.access_token) return null
+
+  const expiresAt = conn.expires_at ?? 0
+  const isExpired = expiresAt > 0 && Date.now() > expiresAt - 60_000 // refresh 1 min early
+  if (isExpired && conn.refresh_token) {
+    const refreshed = await refreshXToken(conn)
+    if (refreshed) {
+      await saveXConnection(refreshed)
+      return { accessToken: refreshed.access_token, username: refreshed.username }
+    }
+  }
+  return { accessToken: conn.access_token, username: conn.username }
+}
+
 // ── Aggregate status (for Settings / shell) ─────────────────────────────────
 
 export async function getConnectionsStatus(): Promise<{
   youtube: { email: string } | null
   instagram: { username: string | null } | null
   tiktok: { displayName: string | null } | null
+  x: { username: string | null } | null
 }> {
   const jar = await cookies()
   const activeId = readWorkspaceState(jar).activeId
@@ -319,11 +410,13 @@ export async function getConnectionsStatus(): Promise<{
   const google = read<GoogleAccount>(GOOGLE_COOKIE)
   const ig = read<InstagramConnection>(INSTAGRAM_COOKIE)
   const tt = read<TikTokConnection>(TIKTOK_COOKIE)
+  const x = read<XConnection>(X_COOKIE)
 
   return {
     youtube: google?.email ? { email: google.email } : null,
     instagram: ig?.access_token && ig?.account_id ? { username: ig.username ?? null } : null,
     tiktok: tt?.access_token ? { displayName: tt.display_name ?? null } : null,
+    x: x?.access_token ? { username: x.username ?? null } : null,
   }
 }
 
@@ -345,6 +438,10 @@ export async function getInstagramConnectionRaw(): Promise<InstagramConnection |
 
 export async function getTikTokConnectionRaw(): Promise<TikTokConnection | null> {
   return readCookie<TikTokConnection>(TIKTOK_COOKIE)
+}
+
+export async function getXConnectionRaw(): Promise<XConnection | null> {
+  return readCookie<XConnection>(X_COOKIE)
 }
 
 /** Cookieless Google refresh — returns a fresh access token + unix-seconds expiry. */
@@ -369,10 +466,15 @@ export async function refreshTikTokAccessToken(refreshToken: string): Promise<Ti
   return refreshTikTokToken({ access_token: '', refresh_token: refreshToken })
 }
 
+/** Cookieless X refresh — returns fresh tokens (unix-ms expiry) or null. */
+export async function refreshXAccessToken(refreshToken: string): Promise<XConnection | null> {
+  return refreshXToken({ access_token: '', refresh_token: refreshToken })
+}
+
 // ── Workspace management ─────────────────────────────────────────────────────
 
 /** All per-platform connection cookie bases, used when wiping a workspace. */
-const CONNECTION_COOKIE_BASES = [GOOGLE_COOKIE, INSTAGRAM_COOKIE, TIKTOK_COOKIE]
+const CONNECTION_COOKIE_BASES = [GOOGLE_COOKIE, INSTAGRAM_COOKIE, TIKTOK_COOKIE, X_COOKIE]
 
 export async function getWorkspaces(): Promise<WorkspaceState> {
   const jar = await cookies()

@@ -138,6 +138,94 @@ export async function postInstagramReel(opts: {
   return { postId: publishData.id, postUrl: `https://www.instagram.com/p/${publishData.id}/` }
 }
 
+export interface XResult { postId: string; postUrl: string }
+
+/**
+ * Posts a video Tweet: v2 chunked media upload (INIT → APPEND → FINALIZE →
+ * STATUS poll) then POST /2/tweets. Standard accounts cap videos at 140s /
+ * 512MB and text at 280 chars (text is truncated here, not rejected).
+ */
+export async function postXVideo(opts: {
+  accessToken: string
+  blobUrl: string
+  text: string
+  size: number
+  type: string
+  username?: string
+}): Promise<XResult> {
+  const { accessToken, blobUrl, text, size, type, username } = opts
+  const auth = { Authorization: `Bearer ${accessToken}` }
+  const uploadUrl = 'https://api.x.com/2/media/upload'
+
+  const xError = (step: string, data: unknown): Error => {
+    const d = data as { errors?: { message?: string }[]; error?: string; detail?: string; title?: string }
+    const msg = d?.errors?.[0]?.message ?? d?.detail ?? d?.error ?? d?.title ?? JSON.stringify(data)
+    return new Error(`X ${step} error: ${msg}`)
+  }
+
+  // 1: INIT
+  const initForm = new FormData()
+  initForm.set('command', 'INIT')
+  initForm.set('media_type', type || 'video/mp4')
+  initForm.set('total_bytes', String(size))
+  initForm.set('media_category', 'tweet_video')
+  const initRes = await fetch(uploadUrl, { method: 'POST', headers: auth, body: initForm })
+  const initData = await initRes.json()
+  const mediaId = initData.data?.id
+  if (!mediaId) throw xError('media init', initData)
+
+  // 2: APPEND in ≤4MB chunks (X caps append segments at 5MB)
+  const blobRes = await fetch(blobUrl)
+  if (!blobRes.ok) throw new Error('Failed to fetch video from blob storage')
+  const bytes = new Uint8Array(await blobRes.arrayBuffer())
+  const CHUNK = 4 * 1024 * 1024
+  for (let i = 0; i * CHUNK < bytes.length; i++) {
+    const chunk = bytes.subarray(i * CHUNK, Math.min((i + 1) * CHUNK, bytes.length))
+    const form = new FormData()
+    form.set('command', 'APPEND')
+    form.set('media_id', mediaId)
+    form.set('segment_index', String(i))
+    form.set('media', new Blob([chunk]))
+    const res = await fetch(uploadUrl, { method: 'POST', headers: auth, body: form })
+    if (!res.ok) throw xError('media append', await res.json().catch(() => res.statusText))
+  }
+
+  // 3: FINALIZE
+  const finForm = new FormData()
+  finForm.set('command', 'FINALIZE')
+  finForm.set('media_id', mediaId)
+  const finRes = await fetch(uploadUrl, { method: 'POST', headers: auth, body: finForm })
+  const finData = await finRes.json()
+  if (!finData.data?.id) throw xError('media finalize', finData)
+
+  // 4: poll processing (absent processing_info means immediately usable)
+  let info = finData.data.processing_info
+  let attempts = 0
+  while (info && info.state !== 'succeeded') {
+    if (info.state === 'failed') throw xError('media processing', finData)
+    if (attempts++ >= 40) throw new Error('X media processing timed out')
+    await sleep(Math.min((info.check_after_secs ?? 3), 10) * 1000)
+    const statusRes = await fetch(`${uploadUrl}?command=STATUS&media_id=${mediaId}`, { headers: auth })
+    const statusData = await statusRes.json()
+    info = statusData.data?.processing_info
+  }
+
+  // 5: create the post
+  const tweetRes = await fetch('https://api.x.com/2/tweets', {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: (text || '').slice(0, 280), media: { media_ids: [mediaId] } }),
+  })
+  const tweetData = await tweetRes.json()
+  const postId = tweetData.data?.id
+  if (!postId) throw xError('tweet', tweetData)
+
+  return {
+    postId,
+    postUrl: username ? `https://x.com/${username}/status/${postId}` : `https://x.com/i/web/status/${postId}`,
+  }
+}
+
 export interface TikTokResult {
   publishId: string
   /** True when the video went to the user's TikTok inbox as a draft

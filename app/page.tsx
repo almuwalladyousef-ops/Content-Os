@@ -11,6 +11,7 @@ interface Status {
   youtube: { email: string } | null
   instagram: { username: string | null } | null
   tiktok: { displayName: string | null } | null
+  x: { username: string | null } | null
 }
 interface Job {
   id: string
@@ -46,6 +47,7 @@ export default function Dashboard() {
     { key: 'youtube', label: 'YouTube', connected: !!status?.youtube, detail: status?.youtube?.email },
     { key: 'instagram', label: 'Instagram', connected: !!status?.instagram, detail: status?.instagram?.username ? `@${status.instagram.username}` : null },
     { key: 'tiktok', label: 'TikTok', connected: !!status?.tiktok, detail: status?.tiktok?.displayName },
+    { key: 'x', label: 'X', connected: !!status?.x, detail: status?.x?.username ? `@${status.x.username}` : null },
   ]
   const connectedCount = platforms.filter(p => p.connected).length
 
@@ -70,7 +72,7 @@ export default function Dashboard() {
         <section style={card}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <h2 className="h3">Connections</h2>
-            <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-mute)' }}>{connectedCount}/3</span>
+            <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-mute)' }}>{connectedCount}/4</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {platforms.map(p => (

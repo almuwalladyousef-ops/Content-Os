@@ -3,6 +3,7 @@ import {
   getGoogleAccountRaw,
   getInstagramConnectionRaw,
   getTikTokConnectionRaw,
+  getXConnectionRaw,
 } from '@/lib/connections'
 import { addJob, loadQueue, toPublicJob, type ScheduledJob, type TokenSnapshot } from '@/lib/schedule-store'
 
@@ -21,8 +22,9 @@ export async function POST(req: NextRequest) {
       youtube: !!body.platforms?.youtube,
       instagram: !!body.platforms?.instagram,
       tiktok: !!body.platforms?.tiktok,
+      x: !!body.platforms?.x,
     }
-    if (!platforms.youtube && !platforms.instagram && !platforms.tiktok) {
+    if (!platforms.youtube && !platforms.instagram && !platforms.tiktok && !platforms.x) {
       return NextResponse.json({ error: 'Select at least one platform' }, { status: 400 })
     }
     if (!body.blobUrl) return NextResponse.json({ error: 'No video uploaded' }, { status: 400 })
@@ -45,6 +47,12 @@ export async function POST(req: NextRequest) {
       const tt = await getTikTokConnectionRaw()
       if (!tt?.access_token) return NextResponse.json({ error: 'TikTok not connected' }, { status: 400 })
       tokens.tiktok = { access_token: tt.access_token, refresh_token: tt.refresh_token, expires_at: tt.expires_at }
+    }
+    if (platforms.x) {
+      const x = await getXConnectionRaw()
+      // X access tokens last ~2h, so a scheduled post is only viable with a refresh token.
+      if (!x?.access_token || !x?.refresh_token) return NextResponse.json({ error: 'X not connected (or missing refresh token — reconnect in Settings)' }, { status: 400 })
+      tokens.x = { access_token: x.access_token, refresh_token: x.refresh_token, expires_at: x.expires_at, username: x.username }
     }
 
     const job: ScheduledJob = {

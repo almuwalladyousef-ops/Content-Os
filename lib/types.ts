@@ -2,10 +2,11 @@ export interface PostRecord {
   id: string
   date: string
   video_name: string
-  platforms: ('youtube' | 'instagram' | 'tiktok')[]
+  platforms: ('youtube' | 'instagram' | 'tiktok' | 'x')[]
   youtube_url?: string
   instagram_url?: string
   tiktok_url?: string
+  x_url?: string
   caption: string
   analysis_file_id?: string
   transcript_file_id?: string

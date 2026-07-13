@@ -1,25 +1,14 @@
 import { Router } from 'express';
 import { synthesize } from '../lib/tts/synthesize.js';
-import { alignBoundariesToTokens } from '../lib/tts/align.js';
-import { hashKey, readCache, writeCache } from '../lib/cache.js';
+import {
+  alignBoundariesToTokens, attachSentenceTimings, remapCachedPayload,
+} from '../lib/tts/align.js';
+import { hashKey, readCachePayload, writeCache } from '../lib/cache.js';
 import { DEFAULT_VOICE } from '../config.js';
 
 export const ttsRouter = Router();
 
-/** Give each sentence the offset of its first timed word (for skip/seek). */
-function attachSentenceTimings(sentences, words) {
-  const byToken = new Map(words.map((w) => [w.tokenIndex, w]));
-  return sentences.map((s) => {
-    let offsetMs = null;
-    for (let t = s.tokenStart; t <= s.tokenEnd; t++) {
-      const w = byToken.get(t);
-      if (w && w.offsetMs != null) { offsetMs = w.offsetMs; break; }
-    }
-    return { ...s, offsetMs };
-  });
-}
-
-ttsRouter.post('/tts', async (req, res) => {
+async function handleTts(req, res) {
   try {
     const { tokens = [], sentences = [], voice = DEFAULT_VOICE } = req.body || {};
     if (!Array.isArray(tokens) || tokens.length === 0) {
@@ -29,9 +18,12 @@ ttsRouter.post('/tts', async (req, res) => {
     const text = tokens.map((t) => t.text).join('');
     const hash = hashKey(text, voice);
 
-    const cached = readCache(hash);
+    const cached = readCachePayload(hash);
     if (cached) {
-      return res.json({ audioUrl: `/api/readback/cache/${hash}.mp3`, ...cached.payload });
+      return res.json({
+        audioUrl: `/api/readback/cache/${hash}.mp3`,
+        ...remapCachedPayload(tokens, sentences, cached, voice),
+      });
     }
 
     const { mp3, boundaries, durationMs } = await synthesize(text, voice);
@@ -46,4 +38,9 @@ ttsRouter.post('/tts', async (req, res) => {
     console.error('[tts] synthesis failed:', err);
     res.status(500).json({ error: err.message || 'Synthesis failed.' });
   }
-});
+}
+
+// Keep the original full-document route for older clients and explicit export
+// workflows. Incremental clients send one sentence at a time to /tts/chunk.
+ttsRouter.post('/tts', handleTts);
+ttsRouter.post('/tts/chunk', handleTts);

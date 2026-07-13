@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { clearGoogleAccount, clearInstagramConnection, clearTikTokConnection, revokeTikTokToken, clearXConnection, revokeXToken } from '@/lib/connections'
+import { clearGoogleAccount, clearInstagramConnection, clearTikTokConnection, revokeTikTokToken } from '@/lib/connections'
 
 export async function POST(req: NextRequest) {
   const { platform } = await req.json()
@@ -15,10 +15,6 @@ export async function POST(req: NextRequest) {
     case 'tiktok':
       await revokeTikTokToken()
       await clearTikTokConnection()
-      break
-    case 'x':
-      await revokeXToken()
-      await clearXConnection()
       break
     default:
       return NextResponse.json({ error: 'Invalid platform' }, { status: 400 })

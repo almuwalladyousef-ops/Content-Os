@@ -23,6 +23,15 @@ type TranscribeResponse = {
 
 type RequestState = "idle" | "working" | "ready" | "error";
 
+type CreateJobResponse = {
+  jobId: string;
+};
+
+type JobResponse = TranscribeResponse & {
+  status: string;
+  error?: string | null;
+};
+
 export function LinkScribeApp() {
   const [url, setUrl] = useState("");
   const [state, setState] = useState<RequestState>("idle");
@@ -66,8 +75,13 @@ export function LinkScribeApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: validation.url }),
       });
-      const created = await createRes.json();
-      if (!createRes.ok) throw new Error(created.error || "Could not start transcription.");
+      const created = await readApiJson<CreateJobResponse>(
+        createRes,
+        "Could not start transcription.",
+      );
+      if (!created.jobId || typeof created.jobId !== "string") {
+        throw new Error("The home server did not return a transcription job ID.");
+      }
 
       const body = await pollJob(created.jobId, setStatus);
       setResult(body);
@@ -130,15 +144,43 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 async function pollJob(jobId: string, setStatus: (s: string) => void): Promise<TranscribeResponse> {
-  // ~15 min ceiling at 2.5s intervals — long enough for big videos on the mini.
+  // Poll immediately once, then use 2.5s intervals. The work remains async, but
+  // fast failures/results do not incur an unnecessary initial delay.
   for (let attempt = 0; attempt < 360; attempt++) {
-    await new Promise((r) => setTimeout(r, 2500));
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 2500));
     const res = await fetch(`/api/linkscribe/jobs/${jobId}`);
-    const job = await res.json();
-    if (!res.ok) throw new Error(job.error || "Transcription failed.");
+    const job = await readApiJson<JobResponse>(res, "Transcription failed.");
     if (job.status === "done") return job as TranscribeResponse;
     if (job.status === "failed") throw new Error(job.error || "Transcription failed.");
     setStatus(STATUS_LABEL[job.status] ?? "Working");
   }
   throw new Error("Transcription is taking too long. Check the mini and try again.");
+}
+
+async function readApiJson<T extends object>(response: Response, fallbackError: string): Promise<T> {
+  const text = await response.text();
+  let payload: unknown;
+
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    const isHtml = /^\s*(?:<!doctype\s+html|<html\b)/i.test(text)
+      || response.headers.get("content-type")?.toLowerCase().includes("text/html");
+    throw new Error(
+      isHtml
+        ? `LinkScribe received a web page instead of API data (HTTP ${response.status}). Check that the latest app and home server are running.`
+        : fallbackError,
+    );
+  }
+
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    throw new Error(fallbackError);
+  }
+
+  const error = "error" in payload && typeof payload.error === "string"
+    ? payload.error
+    : fallbackError;
+  if (!response.ok) throw new Error(error);
+
+  return payload as T;
 }

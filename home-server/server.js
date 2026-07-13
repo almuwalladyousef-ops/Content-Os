@@ -6,7 +6,10 @@ const path = require('path');
 const fs = require('fs');
 
 // Load .env (works both standalone and when required by main.js)
-const _envPath = path.join(__dirname, '.env');
+// A repointed desktop launch agent can keep using the packaged app's existing
+// credentials without copying secrets into the repo. Standalone installs still
+// default to home-server/.env.
+const _envPath = process.env.CONTENT_OS_ENV || path.join(__dirname, '.env');
 if (fs.existsSync(_envPath)) {
   fs.readFileSync(_envPath, 'utf8').split('\n').forEach(line => {
     const [key, ...rest] = line.trim().split('=');
@@ -57,7 +60,7 @@ require('./linkscribe-worker')(app, { dataDir: DATA_DIR, secret: HOME_SERVER_SEC
 // ── Readback engine at /readback-api/* (ESM engine, dynamic-imported into CJS) ─
 process.env.READBACK_DATA_DIR = process.env.READBACK_DATA_DIR || path.join(DATA_DIR, 'readback');
 import('./readback/index.mjs')
-  .then(({ mountReadback }) => mountReadback(app))
+  .then(({ mountReadback }) => mountReadback(app, { secret: HOME_SERVER_SECRET }))
   .catch(err => console.error('[readback] mount failed:', err));
 
 // ── Content OS frontend + vault (markdown files) ─────────────────────────────
@@ -189,6 +192,118 @@ app.delete('/api/delete', (req, res) => {
   if (!abs) return res.status(400).json({ ok: false, error: 'Invalid path' });
   try { fs.unlinkSync(abs); res.json({ ok: true }); }
   catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
+// ── Bulk import: native multi-select picker (files or folders) → vault ──────
+// Keep this in the unified server so repointing the launch agent from the
+// packaged desktop server does not remove the board's Import action.
+const IMPORT_EXT = /\.(md|markdown|txt)$/i;
+
+function collectImportFiles(p, out) {
+  const name = path.basename(p);
+  if (name.startsWith('.') || SKIP_DIRS.has(name)) return;
+  let st;
+  try { st = fs.statSync(p); } catch { return; }
+  if (st.isDirectory()) {
+    for (const n of fs.readdirSync(p)) collectImportFiles(path.join(p, n), out);
+  } else if (IMPORT_EXT.test(name)) {
+    out.push(p);
+  } else {
+    out.skipped++;
+  }
+}
+
+// Graph-link maps mirror the installed board so imported files get the same
+// Connected To / Graph Links sections as files created in the app.
+const HUB_LINK = '[[00 Content OS|Content OS]]';
+const BRAND_HUB = { traceback: '01 Brand/01 Traceback', 'personal-ai': '01 Brand/02 Personal', motivational: '01 Brand/03 Motivation' };
+const BRAND_LABEL = { traceback: 'Traceback', 'personal-ai': 'Personal AI', motivational: 'Motivational' };
+const FORMAT_HUB = { 'short-form': '03 Formats/01 Short Form', 'long-form': '03 Formats/02 Long Form', x: '03 Formats/03 X', carousel: '03 Formats/04 Carousels', story: '03 Formats/05 Stories' };
+const FORMAT_LABEL = { 'short-form': 'Short Form', 'long-form': 'Long Form', x: 'X', carousel: 'Carousels', story: 'Stories' };
+const RESEARCH_HUB = { accounts: '02 Research/00 Accounts/00 accounts', videos: '02 Research/01 Inbox/00 inbox', topics: '02 Research/03 Topics/00 topics', urgent: '02 Research/04 Urgent/00 urgent' };
+const RESEARCH_LABEL = { accounts: 'Accounts', videos: 'Videos', topics: 'Topics', urgent: 'Urgent' };
+const STATUS_HUB = { script: '04 Board/01 Scripts/00 scripts', 'ready-to-film': '04 Board/02 Ready to Film/00 ready-to-film', 'film-today': '04 Board/03 Film Today/00 film-today', filmed: '04 Board/04 Filmed/00 filmed', 'ready-to-post': '04 Board/05 Ready to Post/00 ready-to-post', posted: '04 Board/06 Posted/00 posted', archive: '05 Archive/00 archive' };
+const STATUS_LABEL = { script: 'Script', 'ready-to-film': 'Ready to Film', 'film-today': 'Film Today', filmed: 'Filmed', 'ready-to-post': 'Ready to Post', posted: 'Posted', archive: 'Archive' };
+
+function graphLinksForImport(status, bucket, fmData) {
+  const links = [HUB_LINK];
+  const acc = String(fmData.account || '').toLowerCase().trim();
+  if (BRAND_HUB[acc]) links.push(`[[${BRAND_HUB[acc]}|${BRAND_LABEL[acc]}]]`);
+  const fmt = String(fmData.format || '').toLowerCase().trim();
+  if (FORMAT_HUB[fmt]) links.push(`[[${FORMAT_HUB[fmt]}|${FORMAT_LABEL[fmt]}]]`);
+  if (status === 'research' && RESEARCH_HUB[bucket]) links.push(`[[${RESEARCH_HUB[bucket]}|${RESEARCH_LABEL[bucket]}]]`);
+  else if (STATUS_HUB[status]) links.push(`[[${STATUS_HUB[status]}|${STATUS_LABEL[status]}]]`);
+  return [...new Set(links)];
+}
+
+function withLinkSections(body, links) {
+  const connected = links.map(l => '- ' + l).join('\n');
+  let b = body;
+  if (/## Connected To\n/.test(b)) b = b.replace(/## Connected To\n[\s\S]*?(?=\n## |\s*$)/, `## Connected To\n\n${connected}\n`);
+  else b = b.trimEnd() + `\n\n## Connected To\n\n${connected}\n`;
+  b = b.replace(/\n## Graph Links\n\n[\s\S]*?(?=\n## |\s*$)/, '').replace(/\s+$/, '');
+  return `${b}\n\n## Graph Links\n\n${links.join('\n')}\n`;
+}
+
+function importedContent(text, status, title, bucket) {
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  let fm, body;
+  if (m) {
+    fm = m[1];
+    fm = /^status\s*:/mi.test(fm) ? fm.replace(/^status\s*:.*$/mi, 'status: ' + status) : fm + '\nstatus: ' + status;
+    if (!/^summary\s*:/mi.test(fm)) fm += '\nsummary: ' + title;
+    if (!/^node_type\s*:/mi.test(fm)) fm = 'node_type: Note\n' + fm;
+    body = m[2];
+  } else {
+    fm = `node_type: Note\nsummary: ${title}\nstatus: ${status}`;
+    body = '\n' + text.trim() + '\n';
+  }
+  const links = graphLinksForImport(status, bucket, parseFM(`---\n${fm}\n---\n`).data);
+  return `---\n${fm}\n---\n${withLinkSections(body, links)}`;
+}
+
+app.post('/api/import', (req, res) => {
+  const vault = getVault();
+  if (!vault) return res.status(400).json({ ok: false, error: 'No folder selected' });
+  const destAbs = vaultResolve(vault, String(req.body.destDir || ''));
+  if (!destAbs) return res.status(400).json({ ok: false, error: 'Invalid destination' });
+  const status = String(req.body.status || 'research');
+  const bucket = String(req.body.bucket || 'topics');
+  const mode = req.body.mode === 'folders' ? 'folders' : 'files';
+  const pick = mode === 'folders'
+    ? '  set fs to choose folder with prompt "Import folders into Content OS" with multiple selections allowed\n'
+    : '  set fs to choose file with prompt "Import files into Content OS" with multiple selections allowed\n';
+  const script =
+    'try\n' + pick +
+    '  set out to ""\n' +
+    '  repeat with f in fs\n' +
+    '    set out to out & POSIX path of f & linefeed\n' +
+    '  end repeat\n' +
+    '  out\n' +
+    'end try';
+  const { execFile } = require('child_process');
+  execFile('osascript', ['-e', script], (err, stdout) => {
+    const picks = (stdout || '').split('\n').map(s => s.trim().replace(/\/+$/, '')).filter(Boolean);
+    if (err || !picks.length) return res.json({ ok: true, cancelled: true, imported: 0, skipped: 0 });
+    const sources = [];
+    sources.skipped = 0;
+    picks.forEach(p => collectImportFiles(p, sources));
+    let imported = 0, skipped = sources.skipped;
+    try { fs.mkdirSync(destAbs, { recursive: true }); } catch {}
+    for (const src of sources) {
+      try {
+        const text = fs.readFileSync(src, 'utf8');
+        const stem = (path.basename(src).replace(IMPORT_EXT, '')
+          .replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim()) || 'imported';
+        let target = path.join(destAbs, stem + '.md');
+        let n = 2;
+        while (fs.existsSync(target)) target = path.join(destAbs, `${stem} ${n++}.md`);
+        fs.writeFileSync(target, importedContent(text, status, stem, bucket), 'utf8');
+        imported++;
+      } catch { skipped++; }
+    }
+    res.json({ ok: true, imported, skipped });
+  });
 });
 
 // ── OAuth2 helpers ──────────────────────────────────────────────────────────
@@ -550,8 +665,8 @@ app.get('/api/calendars', async (req, res) => {
 
 const POSTER_URL = (process.env.POSTER_URL || 'https://contentos-flame.vercel.app').replace(/\/+$/, '');
 const CRON_SECRET = process.env.CRON_SECRET || '';
-const SCHED_DIR = '03 Board/04 Ready to Post';
-const POSTED_DIR = '03 Board/05 Posted';
+const SCHED_DIR = '04 Board/05 Ready to Post';
+const POSTED_DIR = '04 Board/06 Posted';
 
 function schedTitle(job) {
   const firstLine = (s) => String(s || '').split('\n').map(x => x.trim()).find(Boolean) || '';

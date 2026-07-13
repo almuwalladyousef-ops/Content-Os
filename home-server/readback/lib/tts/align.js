@@ -28,3 +28,36 @@ export function alignBoundariesToTokens(tokens, boundaries) {
   }
   return words;
 }
+
+/** Give each sentence the offset of its first timed word (for skip/seek). */
+export function attachSentenceTimings(sentences, words) {
+  const byToken = new Map(words.map((word) => [word.tokenIndex, word]));
+  return sentences.map((sentence) => {
+    let offsetMs = null;
+    for (let token = sentence.tokenStart; token <= sentence.tokenEnd; token++) {
+      const word = byToken.get(token);
+      if (word?.offsetMs != null) { offsetMs = word.offsetMs; break; }
+    }
+    return { ...sentence, offsetMs };
+  });
+}
+
+/**
+ * Rebind cached timings by spoken-word order to this request's token indexes.
+ * The cache key is text + voice, so the same sentence can correctly be reused
+ * at multiple positions in one article.
+ */
+export function remapCachedPayload(tokens, sentences, cached, voice) {
+  const boundaries = (cached?.words || []).map((word) => ({
+    word: word.text,
+    offsetMs: word.offsetMs,
+    durationMs: word.durationMs,
+  }));
+  const words = alignBoundariesToTokens(tokens, boundaries);
+  return {
+    words,
+    sentences: attachSentenceTimings(sentences, words),
+    durationMs: cached?.durationMs || 0,
+    voice: cached?.voice || voice,
+  };
+}

@@ -1,17 +1,16 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, useSyncExternalStore, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { IconShield, LogoTikTok, LogoInstagram, LogoYouTube, LogoX } from '@/components/Icons'
+import { IconShield, LogoTikTok, LogoInstagram, LogoYouTube } from '@/components/Icons'
 
 interface ConnectionsStatus {
   youtube: { email: string } | null
   instagram: { username: string | null } | null
   tiktok: { displayName: string | null } | null
-  x: { username: string | null } | null
 }
 
-type Platform = 'youtube' | 'instagram' | 'tiktok' | 'x'
+type Platform = 'youtube' | 'instagram' | 'tiktok'
 
 export default function SettingsPage() {
   return (
@@ -105,7 +104,14 @@ function HomeServerCard() {
     }
   }
 
-  useEffect(() => { check() }, [])
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/home/health', { cache: 'no-store' })
+      .then(r => r.json())
+      .catch(() => ({ online: false, configured: true }))
+      .then(next => { if (!cancelled) setState(next) })
+    return () => { cancelled = true }
+  }, [])
 
   const online = !!state?.online
   const configured = state?.configured !== false
@@ -155,7 +161,11 @@ function SettingsContent() {
   const searchParams = useSearchParams()
   const [status, setStatus] = useState<ConnectionsStatus | null>(null)
   const [disconnecting, setDisconnecting] = useState<Platform | null>(null)
-  const [origin] = useState(() => typeof window === 'undefined' ? '' : window.location.origin)
+  const origin = useSyncExternalStore(
+    () => () => {},
+    () => window.location.origin,
+    () => '',
+  )
   const [copied, setCopied] = useState('')
 
   const banners: { ok: boolean; msg: string }[] = []
@@ -167,7 +177,6 @@ function SettingsContent() {
   pushBanner('yt_connected', 'yt_error', 'YouTube')
   pushBanner('ig_connected', 'ig_error', 'Instagram')
   pushBanner('tt_connected', 'tt_error', 'TikTok')
-  pushBanner('x_connected', 'x_error', 'X')
 
   function load() {
     fetch('/api/auth/status')
@@ -192,14 +201,12 @@ function SettingsContent() {
     youtube: '/api/auth/connect',
     instagram: '/api/auth/instagram/connect',
     tiktok: '/api/auth/tiktok/connect',
-    x: '/api/auth/x/connect',
   }
 
   const redirectUris: { label: string; path: string; where: string }[] = [
     { label: 'Google', path: '/api/auth/callback', where: 'Google Cloud → Credentials → OAuth client → Authorized redirect URIs' },
     { label: 'Instagram', path: '/api/auth/instagram/callback', where: 'Meta app → Instagram → API setup with Instagram Login → Business login settings → Redirect URIs' },
     { label: 'TikTok', path: '/api/auth/tiktok/callback', where: 'TikTok app → Login Kit → Redirect URI' },
-    { label: 'X', path: '/api/auth/x/callback', where: 'X Developer Console → your app → User authentication settings → Callback URI' },
   ]
 
   function connect(platform: Platform) {
@@ -224,8 +231,7 @@ function SettingsContent() {
   const ytConnected = !!status?.youtube
   const igConnected = !!status?.instagram
   const ttConnected = !!status?.tiktok
-  const xConnected = !!status?.x
-  const connectedCount = [ytConnected, igConnected, ttConnected, xConnected].filter(Boolean).length
+  const connectedCount = [ytConnected, igConnected, ttConnected].filter(Boolean).length
 
   return (
     <div className="anim-up" style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 'var(--gap)' }}>
@@ -235,7 +241,7 @@ function SettingsContent() {
           <div className="micro" style={{ marginBottom: 4 }}>Connections</div>
           <h1 className="h1">Settings</h1>
         </div>
-        <span className="pill"><span className="dot" style={{ background: connectedCount === 4 ? 'var(--ok)' : undefined }} />{connectedCount}/4 connected</span>
+        <span className="pill"><span className="dot" style={{ background: connectedCount === 3 ? 'var(--ok)' : undefined }} />{connectedCount}/3 connected</span>
       </div>
 
       {/* OAuth banners */}
@@ -292,19 +298,6 @@ function SettingsContent() {
         disconnecting={disconnecting === 'tiktok'}
         icon={<LogoTikTok size={20} />}
         color="oklch(0.85 0.15 200)"
-      />
-
-      <IntegrationCard
-        title="X"
-        sub="Video posts · repost reels"
-        connected={xConnected}
-        identity={status?.x?.username ? `@${status.x.username}` : 'Connected'}
-        actionLabel={xConnected ? 'Reconnect' : 'Connect'}
-        onAction={() => connect('x')}
-        onDisconnect={() => disconnect('x', 'X')}
-        disconnecting={disconnecting === 'x'}
-        icon={<LogoX size={18} />}
-        color="oklch(0.92 0 0)"
       />
 
       <SectionHead eyebrow="Infrastructure" title="Home server" />

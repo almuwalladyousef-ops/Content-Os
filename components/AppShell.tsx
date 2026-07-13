@@ -95,6 +95,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         style={{
           padding: 'var(--pad)',
           position: 'relative',
+          minWidth: 0,
           height: isMobile ? 'auto' : '100vh',
           minHeight: isMobile ? '100vh' : undefined,
           overflowY: isMobile ? 'visible' : 'auto',

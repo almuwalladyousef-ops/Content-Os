@@ -3,8 +3,8 @@ import {
   loadQueue, saveQueue, deleteJobVideo, toPublicJob,
   type ScheduledJob, type Platform, type PlatformOutcome,
 } from '@/lib/schedule-store'
-import { refreshGoogleAccessToken, refreshTikTokAccessToken, refreshXAccessToken } from '@/lib/connections'
-import { postYouTubeVideo, postInstagramReel, postTikTokVideo, postXVideo } from '@/lib/post-platforms'
+import { refreshGoogleAccessToken, refreshTikTokAccessToken } from '@/lib/connections'
+import { postYouTubeVideo, postInstagramReel, postTikTokVideo } from '@/lib/post-platforms'
 import { addHistoryEntry } from '@/lib/history'
 
 // Posting a video can take a while (resumable upload + processing polls).
@@ -98,47 +98,23 @@ async function runDuePosts(): Promise<{ due: number; jobs: ScheduledJob[] }> {
       }
     }
 
-    // X
-    if (job.platforms.x && job.tokens.x) {
-      try {
-        let access = job.tokens.x.access_token
-        const exp = job.tokens.x.expires_at ?? 0
-        // X access tokens last ~2h, so a scheduled post almost always refreshes.
-        if (exp > 0 && nowMs > exp - 60_000 && job.tokens.x.refresh_token) {
-          const refreshed = await refreshXAccessToken(job.tokens.x.refresh_token)
-          if (refreshed?.access_token) {
-            access = refreshed.access_token
-            // X rotates refresh tokens on every use — the old one is now dead,
-            // so update every job that snapshotted this same connection.
-            const oldRefresh = job.tokens.x.refresh_token
-            for (const other of jobs) {
-              if (other.tokens.x?.refresh_token === oldRefresh) {
-                other.tokens.x = { ...other.tokens.x, access_token: refreshed.access_token, refresh_token: refreshed.refresh_token, expires_at: refreshed.expires_at }
-              }
-            }
-            await saveQueue(jobs)
-          }
-        }
-        const captionWithTags = job.caption + (job.hashtags.length ? '\n\n' + job.hashtags.join(' ') : '')
-        const r = await postXVideo({
-          accessToken: access, blobUrl: job.blobUrl, text: captionWithTags,
-          size: job.size, type: job.type, username: job.tokens.x.username,
-        })
-        results.x = { success: true, url: r.postUrl }
-      } catch (e) {
-        results.x = { success: false, error: String(e instanceof Error ? e.message : e) }
-      }
-    }
-
     const outcomes = Object.values(results)
     const anySuccess = outcomes.some(o => o?.success)
+    const hasSupportedDestination = job.platforms.youtube || job.platforms.instagram || job.platforms.tiktok
     job.results = results
     job.postedAt = new Date().toISOString()
     job.status = anySuccess ? 'done' : 'failed'
-    if (!anySuccess) job.error = outcomes.map(o => o?.error).filter(Boolean).join(' · ') || 'All platforms failed'
+    if (!anySuccess) {
+      job.error = hasSupportedDestination
+        ? outcomes.map(o => o?.error).filter(Boolean).join(' · ') || 'All platforms failed'
+        : 'This scheduled post had no supported destination.'
+    }
+
+    if (anySuccess || !hasSupportedDestination) {
+      await deleteJobVideo(job)
+    }
 
     if (anySuccess) {
-      await deleteJobVideo(job)
       // Best-effort history entry (mirrors the interactive flow).
       if (job.tokens.google?.refresh_token) {
         try {
@@ -150,7 +126,6 @@ async function runDuePosts(): Promise<{ due: number; jobs: ScheduledJob[] }> {
             id: job.id, date: job.postedAt, video_name: job.fileName, platforms,
             caption: job.caption,
             youtube_url: results.youtube?.url, instagram_url: results.instagram?.url,
-            x_url: results.x?.url,
           })
         } catch { /* non-fatal */ }
       }

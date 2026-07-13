@@ -10,7 +10,14 @@ async function post(path, body, { timeoutMs } = {}) {
       body: JSON.stringify(body),
       signal: ctrl?.signal,
     });
-    const data = await res.json().catch(() => ({}));
+    const text = await res.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch {
+      throw new Error(`Readback service returned an invalid response (${res.status}).`);
+    }
+    if (!data || Array.isArray(data) || typeof data !== 'object') {
+      throw new Error(`Readback service returned an invalid response (${res.status}).`);
+    }
     if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
     return data;
   } catch (err) {
@@ -23,14 +30,26 @@ async function post(path, body, { timeoutMs } = {}) {
 
 async function getJson(path) {
   const res = await fetch(path);
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch {
+    throw new Error(`Readback service returned an invalid response (${res.status}).`);
+  }
+  if (!data || Array.isArray(data) || typeof data !== 'object') {
+    throw new Error(`Readback service returned an invalid response (${res.status}).`);
+  }
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }
 
 export const api = {
   extract: (input) => post('/api/readback/extract', input),
-  tts: ({ tokens, sentences, voice }) => post('/api/readback/tts', { tokens, sentences, voice }, { timeoutMs: 45000 }),
+  // The legacy full-document endpoint remains available. New playback uses the
+  // sentence endpoint so the first audio is returned without waiting for the
+  // rest of the article.
+  tts: ({ tokens, sentences, voice }) => post('/api/readback/tts', { tokens, sentences, voice }, { timeoutMs: 180000 }),
+  ttsChunk: ({ tokens, sentences, voice }) =>
+    post('/api/readback/tts/chunk', { tokens, sentences, voice }, { timeoutMs: 65000 }),
   voices: () => getJson('/api/readback/voices'),
   library: {
     list: () => getJson('/api/readback/library'),

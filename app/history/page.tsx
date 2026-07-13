@@ -1,14 +1,13 @@
 'use client'
 
 import React, { useEffect, useState, useMemo } from 'react'
-import { IconFilm, IconExternal, IconArrowRight, LogoYouTube, LogoInstagram, LogoX, PlatformIcon } from '@/components/Icons'
+import { IconFilm, IconExternal, IconArrowRight, LogoYouTube, LogoInstagram, PlatformIcon } from '@/components/Icons'
 import { PostRecord, VideoAnalysis } from '@/lib/types'
 
 const PLATFORM_META = {
   youtube: { name: 'YouTube', color: 'oklch(0.65 0.21 25)' },
   instagram: { name: 'Instagram', color: 'oklch(0.70 0.20 340)' },
   tiktok: { name: 'TikTok', color: 'oklch(0.85 0.15 200)' },
-  x: { name: 'X', color: 'oklch(0.92 0 0)' },
 } as const
 
 type PlatformKey = keyof typeof PLATFORM_META
@@ -213,11 +212,6 @@ function HistoryRow({ entry, expanded, onToggle, analysis }: {
                 {entry.instagram_url && (
                   <a href={entry.instagram_url} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 11.5, color: 'var(--text-2)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <LogoInstagram size={12} /> Instagram <IconExternal size={10} style={{ marginLeft: 'auto' }} />
-                  </a>
-                )}
-                {entry.x_url && (
-                  <a href={entry.x_url} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 11.5, color: 'var(--text-2)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <LogoX size={12} /> X <IconExternal size={10} style={{ marginLeft: 'auto' }} />
                   </a>
                 )}
               </div>

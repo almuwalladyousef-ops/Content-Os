@@ -6,6 +6,7 @@ import { createPlayer } from './player.js';
 import { createHighlighter } from './highlight.js';
 import { initShortcuts } from './shortcuts.js';
 import { renderList, formatTime } from './library.js';
+import { buildSynthesisChunks, assembleTimeline } from './timeline.js';
 
 // Wrapped so React can mount it after the markup renders (the original was a
 // self-initializing module). All logic below is verbatim from readback's main.js.
@@ -33,15 +34,16 @@ const highlighter = createHighlighter();
 
 const state = {
   article: null,        // { title, tokens, sentences, wordCount, estMinutes }
-  tts: null,            // { audioUrl, words, sentences, durationMs, voice }
+  tts: null,            // virtual aggregate of ready + estimated sentence timing
+  chunks: [],           // independently synthesized sentence tracks
   spanByToken: null,
   voice: DEFAULT_VOICE,
   speed: 1,
   libraryId: null,
-  synthing: null,       // in-flight synth promise
-  synthVoice: null,     // voice the in-flight synth is for
-  synthGen: 0,          // generation token; bumped to supersede stale synths
-  pendingPlay: false,   // user pressed play before audio was ready
+  synthGen: 0,          // generation token; bumped to supersede stale requests
+  backgroundStarted: false,
+  backgroundPromise: null,
+  foregroundRequests: 0,
   lastSavedMs: 0,
 };
 
@@ -89,50 +91,199 @@ function hideToast() { clearTimeout(toastTimer); els.toast.hidden = true; }
 
 // --- Synthesis -------------------------------------------------------------
 function hashFromUrl(url) {
-  return url.split('/').pop().replace('.mp3', '');
+  return url ? url.split('/').pop().replace('.mp3', '') : '';
 }
 
-function ensureSynth() {
-  if (state.tts) return Promise.resolve(state.tts);
-  // Reuse an in-flight synth only if it's for the SAME voice; a voice change
-  // must supersede it (otherwise the old request blocks the new one forever).
-  if (state.synthing && state.synthVoice === state.voice) return state.synthing;
+function setForegroundBusy(delta) {
+  state.foregroundRequests = Math.max(0, state.foregroundRequests + delta);
+  els.transport.classList.toggle('is-busy', state.foregroundRequests > 0);
+}
 
-  const gen = ++state.synthGen;
+function refreshTimeline() {
+  state.tts = assembleTimeline(state.chunks);
+  highlighter.setWords(state.tts.words, state.spanByToken);
+  highlighter.update(player.currentMs);
+  updateTimeUI(player.currentMs);
+  return state.tts;
+}
+
+function resetSynthesis(progressMs = 0) {
+  state.synthGen++;
+  state.backgroundStarted = false;
+  state.backgroundPromise = null;
+  state.foregroundRequests = 0;
+  els.transport.classList.remove('is-busy');
+  state.chunks = buildSynthesisChunks(state.article);
+  player.setQueue(
+    state.chunks.map((chunk) => ({
+      url: null,
+      durationMs: chunk.estimatedDurationMs,
+    })),
+    progressMs,
+  );
+  refreshTimeline();
+}
+
+// Fetching the MP3 once its JSON manifest arrives warms the browser cache, so
+// moving to the next sentence normally needs no network pause.
+function warmAudio(url) {
+  fetch(url, { cache: 'force-cache' })
+    .then((res) => { if (res.ok) return res.arrayBuffer(); return null; })
+    .catch(() => {});
+}
+
+function synthesizeChunk(index, { foreground = false, retry = false } = {}) {
+  const chunk = state.chunks[index];
+  if (!chunk) return Promise.reject(new Error('That part of the reading is unavailable.'));
+  if (chunk.result) return Promise.resolve(chunk.result);
+  if (chunk.promise) {
+    if (!foreground || chunk.foreground) return chunk.promise;
+    // Playback caught up with a background request. Promote its existing
+    // promise to visible foreground work without starting a duplicate request.
+    const foregroundGen = state.synthGen;
+    chunk.foreground = true;
+    setForegroundBusy(1);
+    toast('Preparing next sentence…', { sticky: true });
+    return chunk.promise
+      .then((res) => { if (foregroundGen === state.synthGen) hideToast(); return res; })
+      .catch((err) => {
+        if (foregroundGen === state.synthGen) toast(err.message || 'Could not generate audio.');
+        throw err;
+      })
+      .finally(() => {
+        if (foregroundGen === state.synthGen && chunk.foreground) {
+          chunk.foreground = false;
+          setForegroundBusy(-1);
+        }
+      });
+  }
+  if (chunk.error && !retry) return Promise.reject(chunk.error);
+
+  const gen = state.synthGen;
   const voice = state.voice;
-  state.synthVoice = voice;
-  els.transport.classList.add('is-busy');
-  toast('Generating audio…', { sticky: true });
+  chunk.error = null;
+  chunk.foreground = foreground;
+  if (foreground) {
+    setForegroundBusy(1);
+    toast('Preparing audio…', { sticky: true });
+  }
 
-  state.synthing = api.tts({
-    tokens: state.article.tokens,
-    sentences: state.article.sentences,
+  chunk.promise = api.ttsChunk({
+    tokens: chunk.tokens,
+    sentences: chunk.sentences,
     voice,
   })
     .then((res) => {
-      if (gen !== state.synthGen) return state.tts; // superseded — ignore stale result
-      state.tts = res;
-      player.load(res.audioUrl);
-      highlighter.setWords(res.words, state.spanByToken);
-      hideToast();
+      if (gen !== state.synthGen) return null;
+      chunk.result = res;
+      chunk.error = null;
+      player.updateTrack(index, {
+        url: res.audioUrl,
+        durationMs: Number(res.durationMs) || chunk.estimatedDurationMs,
+      });
+      refreshTimeline();
+      if (index !== player.trackIndex) warmAudio(res.audioUrl);
+      if (foreground) hideToast();
       return res;
     })
     .catch((err) => {
-      if (gen === state.synthGen) toast(err.message || 'Could not generate audio.');
+      if (gen === state.synthGen) {
+        chunk.error = err;
+        if (foreground) toast(err.message || 'Could not generate audio.');
+      }
       throw err;
     })
     .finally(() => {
-      if (gen === state.synthGen) { els.transport.classList.remove('is-busy'); state.synthing = null; }
+      if (gen !== state.synthGen) return;
+      chunk.promise = null;
+      if (foreground && chunk.foreground) {
+        chunk.foreground = false;
+        setForegroundBusy(-1);
+      }
     });
-  return state.synthing;
+
+  return chunk.promise;
+}
+
+function prioritizedIndexes(from) {
+  const indexes = [];
+  for (let i = from + 1; i < state.chunks.length; i++) indexes.push(i);
+  for (let i = 0; i < from; i++) indexes.push(i);
+  return indexes;
+}
+
+function startBackground(from = player.trackIndex) {
+  if (state.backgroundStarted) return state.backgroundPromise || Promise.resolve();
+  state.backgroundStarted = true;
+  const gen = state.synthGen;
+  const pending = prioritizedIndexes(from);
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < pending.length && gen === state.synthGen) {
+      const index = pending[cursor++];
+      try { await synthesizeChunk(index); } catch { /* retry on demand */ }
+    }
+  }
+
+  state.backgroundPromise = Promise.all([worker(), worker()]);
+  return state.backgroundPromise;
+}
+
+function prefetchAhead(from) {
+  for (let index = from + 1; index <= Math.min(from + 2, state.chunks.length - 1); index++) {
+    synthesizeChunk(index).catch(() => {});
+  }
+}
+
+function prepareCurrent({ foreground = true } = {}) {
+  if (!state.chunks.length) return Promise.reject(new Error('There is no readable text.'));
+  const index = player.trackIndex;
+  const gen = state.synthGen;
+  return synthesizeChunk(index, { foreground, retry: foreground })
+    .then((res) => {
+      if (gen !== state.synthGen) return res;
+      prefetchAhead(index);
+      startBackground(index);
+      return res;
+    });
+}
+
+async function ensureAllChunks() {
+  if (!state.chunks.length) throw new Error('There is no readable text.');
+  const gen = state.synthGen;
+  const missing = state.chunks
+    .map((chunk, index) => (!chunk.result ? index : -1))
+    .filter((index) => index >= 0);
+  let cursor = 0;
+  let firstError = null;
+
+  async function worker() {
+    while (cursor < missing.length && gen === state.synthGen) {
+      const index = missing[cursor++];
+      try {
+        await synthesizeChunk(index, { retry: true });
+      } catch {
+        // A background request may have failed just as Download adopted it.
+        // Retry that sentence once before failing the explicit export.
+        try { await synthesizeChunk(index, { retry: true }); }
+        catch (err) { if (!firstError) firstError = err; }
+      }
+    }
+  }
+
+  await Promise.all([worker(), worker(), worker()]);
+  if (gen !== state.synthGen) throw new Error('The reading changed while audio was being prepared.');
+  if (firstError) throw firstError;
+  return refreshTimeline();
 }
 
 // --- Load an article into the reader ---------------------------------------
 function openArticle(article, { libraryId = null, progressMs = 0 } = {}) {
+  player.pause();
   state.article = article;
   state.tts = null;
   state.libraryId = libraryId;
-  state.pendingPlay = false;
   state.lastSavedMs = progressMs;
   highlighter.reset();
 
@@ -144,8 +295,7 @@ function openArticle(article, { libraryId = null, progressMs = 0 } = {}) {
   els.readerMeta.textContent = `${article.wordCount} words · ${mins} min`;
 
   setSpeed(state.speed);
-  updateTimeUI(progressMs);
-  setPlayingUI(false);
+  resetSynthesis(progressMs);
   window.scrollTo({ top: 0 });
   // The reading pane (#view-reader) scrolls internally in the suite shell.
   els.viewReader?.scrollTo({ top: 0 });
@@ -153,11 +303,12 @@ function openArticle(article, { libraryId = null, progressMs = 0 } = {}) {
   showView('reader');
   saveSession();
 
-  // Prepare audio eagerly so the first press of Play can start synchronously
-  // (browsers — Safari especially — block play() that follows an awaited fetch).
+  // Prepare only the current sentence eagerly. It can start while upcoming
+  // sentences synthesize behind it.
+  const gen = state.synthGen;
   prepareAudio().then(() => {
+    if (gen !== state.synthGen) return;
     if (progressMs > 0) {
-      player.seekMs(progressMs);
       updateTimeUI(progressMs);
       if (progressMs > 2000) toast('Resumed where you left off');
     }
@@ -166,28 +317,18 @@ function openArticle(article, { libraryId = null, progressMs = 0 } = {}) {
 
 // --- Transport -------------------------------------------------------------
 function prepareAudio() {
-  return ensureSynth()
-    .then((res) => {
-      if (state.pendingPlay) { state.pendingPlay = false; startPlayback(); }
-      return res;
-    })
+  return prepareCurrent()
     .catch(() => {});
 }
 
 function startPlayback() {
-  player.play().catch(() => toast('Press play to start the audio.'));
+  player.play().catch(() => {});
+  prepareCurrent({ foreground: true }).catch(() => {});
 }
 
-// Called directly from the click — keep play() in the user-gesture call stack.
 function togglePlay() {
   if (!state.article) return;
-  if (state.tts) {
-    if (player.paused) startPlayback(); else player.pause();
-    return;
-  }
-  // Not synthesized yet: remember the intent; prepareAudio() will start it.
-  state.pendingPlay = true;
-  prepareAudio();
+  if (player.paused) startPlayback(); else player.pause();
 }
 
 function setPlayingUI(playing) {
@@ -243,6 +384,18 @@ player.on('time', (ms) => {
   }
 });
 player.on('state', (playing) => { setPlayingUI(playing); if (!playing) maybeSaveProgress(true); });
+player.on('track', (index) => {
+  if (state.chunks[index]?.result) prefetchAhead(index);
+});
+player.on('needtrack', (index) => {
+  const gen = state.synthGen;
+  synthesizeChunk(index, { foreground: true, retry: true })
+    .then(() => { if (gen === state.synthGen) startBackground(index); })
+    .catch(() => { if (gen === state.synthGen) player.pause(); });
+});
+player.on('error', () => {
+  toast('Audio could not start. Press play to retry.');
+});
 player.on('ended', () => {
   maybeSaveProgress(true);
   if (state.libraryId) api.library.patch(state.libraryId, { read: true }).catch(() => {});
@@ -279,15 +432,15 @@ async function deleteFromLibrary(id) {
 async function saveCurrent() {
   if (!state.article) return;
   try {
-    const res = await ensureSynth();
+    const firstAudioUrl = state.chunks.find((chunk) => chunk.result)?.result?.audioUrl || '';
     const rec = await api.library.save({
       title: state.article.title,
       tokens: state.article.tokens,
       sentences: state.article.sentences,
       voice: state.voice,
-      audioHash: hashFromUrl(res.audioUrl),
+      audioHash: hashFromUrl(firstAudioUrl),
       wordCount: state.article.wordCount,
-      durationMs: res.durationMs,
+      durationMs: effectiveDuration(),
     });
     state.libraryId = rec.id;
     toast('Saved to library');
@@ -298,14 +451,28 @@ async function saveCurrent() {
 
 async function downloadMp3() {
   if (!state.article) return;
+  els.download.classList.add('is-busy');
+  toast('Preparing download…', { sticky: true });
   try {
-    const res = await ensureSynth();
+    await ensureAllChunks();
+    const parts = await Promise.all(state.chunks.map(async (chunk) => {
+      const response = await fetch(chunk.result.audioUrl, { cache: 'force-cache' });
+      if (!response.ok) throw new Error(`Could not download audio (${response.status}).`);
+      return response.blob();
+    }));
+    const objectUrl = URL.createObjectURL(new Blob(parts, { type: 'audio/mpeg' }));
     const a = document.createElement('a');
-    a.href = res.audioUrl;
+    a.href = objectUrl;
     const safe = (state.article.title || 'readback').replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'readback';
     a.download = `${safe}.mp3`;
     document.body.appendChild(a); a.click(); a.remove();
-  } catch { /* toast already shown */ }
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    toast('MP3 ready');
+  } catch (err) {
+    toast(err.message || 'Could not prepare the download.');
+  } finally {
+    els.download.classList.remove('is-busy');
+  }
 }
 
 // --- Wiring ----------------------------------------------------------------
@@ -324,9 +491,12 @@ initInput({
 // The logo starts a fresh reading: stop, forget the restored session, clear state.
 els.brand.addEventListener('click', () => {
   player.pause();
+  state.synthGen++;
+  player.setQueue([]);
   clearSession();
   state.article = null;
   state.tts = null;
+  state.chunks = [];
   state.libraryId = null;
   els.paste.value = '';
   els.inputError.textContent = '';
@@ -352,27 +522,27 @@ els.speed.addEventListener('click', () => {
 });
 els.voice.addEventListener('change', () => {
   if (!state.article) { state.voice = els.voice.value; return; }
-  state.voice = els.voice.value;
   const wasPlaying = !player.paused;
-  const resumeAt = player.currentMs; // keep the listener's place across the switch
+  const resumeAt = player.currentMs;
   player.pause();
-  state.tts = null;
+  state.voice = els.voice.value;
   highlighter.reset();
-  ensureSynth()
-    .then(() => {
-      if (resumeAt > 0) { player.seekMs(resumeAt); updateTimeUI(resumeAt); }
-      if (wasPlaying) startPlayback();
-    })
-    .catch(() => {});
+  resetSynthesis(resumeAt);
+  if (wasPlaying) startPlayback();
+  else prepareAudio();
+  saveSession();
 });
 
 // Click any word to jump there.
-els.reading.addEventListener('click', async (e) => {
+els.reading.addEventListener('click', (e) => {
   const w = e.target.closest('.w');
   if (!w) return;
-  try { await ensureSynth(); } catch { return; }
   const t = highlighter.timeForToken(Number(w.dataset.i));
-  if (t != null) { player.seekMs(t); updateTimeUI(t); }
+  if (t != null) {
+    player.seekMs(t);
+    updateTimeUI(t);
+    prepareCurrent({ foreground: true }).catch(() => {});
+  }
 });
 
 initShortcuts({

@@ -112,7 +112,6 @@ export default function ReadbackPage() {
       </div>
 
       <div className="toast" id="toast" hidden />
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio id="audio" preload="auto" />
     </div>
   )

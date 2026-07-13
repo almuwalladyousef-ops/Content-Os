@@ -6,6 +6,16 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { randomUUID } = require('crypto');
 
+// launchd supplies only the system PATH, while Homebrew installs the media
+// toolchain under /opt/homebrew/bin (Apple Silicon) or /usr/local/bin (Intel).
+// Give every child — including yt-dlp's own ffmpeg subprocesses — the same
+// deterministic tool PATH without relying on an interactive shell profile.
+const COMMAND_PATH = [...new Set([
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  ...(process.env.PATH || '').split(path.delimiter).filter(Boolean),
+])].join(path.delimiter);
+
 /**
  * LinkScribe job runner — download a public video URL with yt-dlp and transcribe
  * it with LOCAL Whisper (free; runs on the always-on Mac mini). Faithful CJS port
@@ -108,6 +118,22 @@ module.exports = function mountLinkscribe(app, { dataDir, secret }) {
     res.type('text/plain').sendFile(abs);
   });
 
+  // Keep API failures machine-readable. Express otherwise renders malformed
+  // JSON and missing-route errors as HTML, which is unhelpful to the web proxy.
+  app.use('/linkscribe', (err, _req, res, next) => {
+    if (res.headersSent) return next(err);
+    console.error('[linkscribe] request failed:', err);
+    const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 600 ? err.status : 500;
+    return res.status(status).json({
+      error: status === 400 ? 'Invalid LinkScribe request.' : 'The LinkScribe home-server request failed.',
+      code: 'LINKSCRIBE_REQUEST_FAILED',
+    });
+  });
+  app.use('/linkscribe', (_req, res) => res.status(404).json({
+    error: 'LinkScribe endpoint not found.',
+    code: 'LINKSCRIBE_ENDPOINT_NOT_FOUND',
+  }));
+
   function publicJob(job) {
     return {
       jobId: job.id, status: job.status, title: job.title, error: job.error,
@@ -139,7 +165,10 @@ module.exports = function mountLinkscribe(app, { dataDir, secret }) {
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PATH: COMMAND_PATH },
+    });
     let stdout = '', stderr = '';
     child.stdout.on('data', c => { stdout += c; });
     child.stderr.on('data', c => { stderr += c; });
@@ -167,7 +196,9 @@ async function downloadMedia(url, dir) {
   const result = await run('yt-dlp', [
     '--no-playlist', ...ytDlpAuthArgs(),
     '--print', 'after_move:filepath', '--print', 'title',
-    '-f', 'bv*[vcodec!=none]+ba[acodec!=none]/b[vcodec!=none]/best[vcodec!=none]',
+    // Prefer a merged video/audio pair, but keep an unfiltered `best` fallback
+    // for direct media URLs whose generic metadata reports unknown codecs.
+    '-f', 'bv*[vcodec!=none]+ba[acodec!=none]/b[vcodec!=none]/best[vcodec!=none]/best',
     '--merge-output-format', 'mp4', '-o', outputTemplate, url,
   ]);
 
@@ -253,7 +284,15 @@ async function transcribeViaGroq(mediaPath) {
     headers: { authorization: `Bearer ${process.env.GROQ_API_KEY}` },
     body: form,
   });
-  const data = await res.json();
+  const responseText = await res.text();
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error(res.ok
+      ? 'Groq returned an invalid transcription response.'
+      : `Groq transcription failed (HTTP ${res.status}).`);
+  }
   if (!res.ok) throw new Error(data?.error?.message || 'Groq transcription failed.');
   return (data.segments ?? [])
     .map(s => ({ startSeconds: Number(s.start ?? 0), endSeconds: Number(s.end ?? s.start ?? 0), text: String(s.text ?? '').trim() }))

@@ -75,6 +75,9 @@ export function createHighlighter() {
 
   return {
     setWords(words, spanByToken) {
+      // Timings are refined every time a background sentence arrives. Preserve
+      // the active token instead of repainting every word in the article.
+      const activeToken = active >= 0 ? Number(spans[active]?.dataset.i) : null;
       offsets = []; spans = []; timeByToken = new Map(); active = -1;
       for (const w of words) {
         timeByToken.set(w.tokenIndex, w.offsetMs);
@@ -83,6 +86,9 @@ export function createHighlighter() {
         if (!span) continue;
         offsets.push(w.offsetMs);
         spans.push(span);
+      }
+      if (activeToken != null) {
+        active = spans.findIndex((span) => Number(span.dataset.i) === activeToken);
       }
     },
     update(timeMs) { setActive(findActive(timeMs + LEAD_MS)); },

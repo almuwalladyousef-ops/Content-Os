@@ -15,13 +15,13 @@ import { deleteFile } from './home-storage'
 
 const QUEUE_SECTION = 'schedule'
 
-export type Platform = 'youtube' | 'instagram' | 'tiktok' | 'x'
+export type Platform = 'youtube' | 'instagram' | 'tiktok'
+const PLATFORMS: Platform[] = ['youtube', 'instagram', 'tiktok']
 
 export interface TokenSnapshot {
   google?: { access_token: string; refresh_token: string; expires_at: number; email: string }
   instagram?: { access_token: string; account_id: string; username?: string }
   tiktok?: { access_token: string; refresh_token?: string; expires_at?: number }
-  x?: { access_token: string; refresh_token?: string; expires_at?: number; username?: string }
 }
 
 export interface PlatformOutcome {
@@ -72,7 +72,19 @@ export async function loadQueue(): Promise<ScheduledJob[]> {
   try {
     const enc = await readDoc<string>(QUEUE_SECTION)
     if (!enc || typeof enc !== 'string' || !enc.trim()) return []
-    return JSON.parse(decrypt(enc)) as ScheduledJob[]
+    const parsed = JSON.parse(decrypt(enc)) as ScheduledJob[]
+    return parsed.map(job => {
+      const platforms = Object.fromEntries(PLATFORMS.map(platform => [platform, !!job.platforms?.[platform]])) as Record<Platform, boolean>
+      const tokens: TokenSnapshot = {
+        google: job.tokens?.google,
+        instagram: job.tokens?.instagram,
+        tiktok: job.tokens?.tiktok,
+      }
+      const results = job.results
+        ? Object.fromEntries(PLATFORMS.flatMap(platform => job.results?.[platform] ? [[platform, job.results[platform]]] : [])) as Partial<Record<Platform, PlatformOutcome>>
+        : undefined
+      return { ...job, platforms, tokens, results }
+    })
   } catch {
     return []
   }

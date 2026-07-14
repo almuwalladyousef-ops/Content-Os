@@ -36,9 +36,9 @@ export default function PrivacyPage() {
               (under a folder named ContentOS) — we do not run a central database.
             </li>
             <li>
-              <strong>Video files you upload</strong>. These are temporarily stored in Vercel Blob storage,
-              forwarded to each destination platform, and then deleted from Blob storage. We do not keep
-              copies.
+              <strong>Video files you upload</strong>. These are stored on your private Mac mini home server,
+              forwarded to each destination platform, and then deleted from the home server. We do not keep
+              copies in Vercel Blob.
             </li>
             <li>
               <strong>Post history</strong> (filename, caption, destination URLs, timestamp) saved to your
@@ -62,7 +62,7 @@ export default function PrivacyPage() {
             <li><strong>Google (YouTube Data API, Drive API)</strong> — for YouTube uploads and token storage.</li>
             <li><strong>Meta (Instagram Graph API)</strong> — for Instagram Reels publishing.</li>
             <li><strong>TikTok Content Posting API</strong> — for TikTok uploads.</li>
-            <li><strong>Vercel Blob</strong> — temporary video file hosting (auto-deleted after posting).</li>
+            <li><strong>Your Mac mini home server</strong> — private temporary video file hosting.</li>
             <li><strong>Vercel</strong> — application hosting.</li>
           </ul>
           <p className="mt-2">
@@ -73,7 +73,7 @@ export default function PrivacyPage() {
         <section>
           <h2 className="text-xl font-semibold mb-2">Retention &amp; deletion</h2>
           <ul className="list-disc pl-6 space-y-1">
-            <li>Video files: deleted from Vercel Blob immediately after the post completes (or fails).</li>
+            <li>Video files: deleted from your Mac mini home server immediately after the post completes (or fails).</li>
             <li>Tokens and post history: stored in your own Google Drive. You can delete them at any time by removing the ContentOS folder from Drive.</li>
             <li>To fully disconnect, revoke access at: Google → <a className="text-primary underline" href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>, Meta → Settings → Business Integrations, TikTok → Settings → Manage app permissions.</li>
           </ul>

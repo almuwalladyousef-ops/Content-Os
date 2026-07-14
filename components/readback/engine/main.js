@@ -25,6 +25,7 @@ const els = {
   reading: $('reading'), readerTitle: $('reader-title'), readerMeta: $('reader-meta'),
   transport: $('transport'), play: $('play'), skipBack: $('skip-back'), skipFwd: $('skip-fwd'),
   seek: $('seek'), time: $('time'), speed: $('speed'), voice: $('voice'),
+  volume: $('volume'),
   save: $('save'), download: $('download'),
   libraryList: $('library-list'), toast: $('toast'), audio: $('audio'),
 };
@@ -39,6 +40,7 @@ const state = {
   spanByToken: null,
   voice: DEFAULT_VOICE,
   speed: 1,
+  volume: 1,
   libraryId: null,
   synthGen: 0,          // generation token; bumped to supersede stale requests
   backgroundStarted: false,
@@ -56,6 +58,8 @@ function saveSession() {
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       article: state.article,
       voice: state.voice,
+      speed: state.speed,
+      volume: state.volume,
       libraryId: state.libraryId,
       progressMs: player.currentMs || state.lastSavedMs || 0,
     }));
@@ -353,6 +357,13 @@ function setSpeed(s) {
   els.speed.textContent = `${state.speed.toFixed(state.speed % 1 === 0 ? 1 : 2)}×`;
 }
 
+function setVolume(value) {
+  state.volume = Math.min(1, Math.max(0, Number(value) || 0));
+  player.setVolume(state.volume);
+  els.volume.value = String(Math.round(state.volume * 100));
+  els.volume.setAttribute('aria-valuetext', `${Math.round(state.volume * 100)} percent`);
+}
+
 function skipSentence(dir) {
   const sents = (state.tts?.sentences || []).filter((s) => s.offsetMs != null);
   if (!sents.length) return;
@@ -532,6 +543,10 @@ els.voice.addEventListener('change', () => {
   else prepareAudio();
   saveSession();
 });
+els.volume.addEventListener('input', () => {
+  setVolume(Number(els.volume.value) / 100);
+  saveSession();
+});
 
 // Click any word to jump there.
 els.reading.addEventListener('click', (e) => {
@@ -583,8 +598,13 @@ const VOICES = [
 // Restore the last reading so a page refresh resumes where you left off.
 (function restoreSession() {
   const sess = loadSession();
-  if (!sess || !sess.article) return;
+  if (!sess || !sess.article) {
+    setVolume(1);
+    return;
+  }
   state.voice = sess.voice || DEFAULT_VOICE;
+  state.speed = Number(sess.speed) || 1;
+  setVolume(sess.volume == null ? 1 : Number(sess.volume));
   openArticle(sess.article, { libraryId: sess.libraryId || null, progressMs: sess.progressMs || 0 });
 })();
 

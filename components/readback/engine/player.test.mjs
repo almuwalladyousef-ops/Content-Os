@@ -13,6 +13,7 @@ class FakeAudio extends EventTarget {
     this.currentTime = 0;
     this.duration = 10;
     this.playbackRate = 1;
+    this.volume = 1;
     this.preload = '';
     this.playCalls = 0;
     this.attrs = new Map();
@@ -91,3 +92,17 @@ test('playback speed survives sentence changes', async () => {
   assert.equal(audio.playbackRate, 1.75);
 });
 
+test('volume survives track changes and clamps to the audio range', async () => {
+  const audio = new FakeAudio();
+  const player = createPlayer(audio);
+  player.setQueue([
+    { url: '/first.mp3', durationMs: 1000 },
+    { url: '/second.mp3', durationMs: 1000 },
+  ]);
+  player.setVolume(0.35);
+  await player.play();
+  audio.finish();
+  assert.equal(audio.volume, 0.35);
+  player.setVolume(2);
+  assert.equal(audio.volume, 1);
+});

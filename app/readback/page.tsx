@@ -85,16 +85,18 @@ export default function ReadbackPage() {
 
       {/* TRANSPORT (reader only) */}
       <div className="transport" id="transport" hidden>
-        <button className="tbtn" id="skip-back" title="Previous sentence (←)" aria-label="Previous sentence">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2v12H7zM20 6v12l-9-6z" /></svg>
-        </button>
-        <button className="play" id="play" title="Play / pause (space)" aria-label="Play">
-          <svg className="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-          <svg className="i-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
-        </button>
-        <button className="tbtn" id="skip-fwd" title="Next sentence (→)" aria-label="Next sentence">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 6h2v12h-2zM4 6l9 6-9 6z" /></svg>
-        </button>
+        <div className="transport-controls">
+          <button className="tbtn" id="skip-back" title="Previous sentence (←)" aria-label="Previous sentence">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2v12H7zM20 6v12l-9-6z" /></svg>
+          </button>
+          <button className="play" id="play" title="Play / pause (space)" aria-label="Play">
+            <svg className="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+            <svg className="i-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+          </button>
+          <button className="tbtn" id="skip-fwd" title="Next sentence (→)" aria-label="Next sentence">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 6h2v12h-2zM4 6l9 6-9 6z" /></svg>
+          </button>
+        </div>
         <div className="seek">
           <input type="range" id="seek" min="0" max="1000" defaultValue="0" aria-label="Seek" />
           <span className="time data" id="time">0:00 / 0:00</span>
@@ -102,6 +104,12 @@ export default function ReadbackPage() {
         <div className="transport-extras">
           <button className="speed-pill data" id="speed" title="Playback speed">1.0×</button>
           <select className="select" id="voice" title="Voice" aria-label="Voice" defaultValue="" />
+          <label className="volume-control" title="Volume">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M5 10v4h3l4 3V7l-4 3H5zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" />
+            </svg>
+            <input type="range" id="volume" min="0" max="100" defaultValue="100" aria-label="Volume" />
+          </label>
           <button className="btn btn-icon btn-ghost" id="save" title="Save to library" aria-label="Save">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
           </button>

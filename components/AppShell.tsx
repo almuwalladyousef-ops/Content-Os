@@ -56,7 +56,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="app"
+      className={`app${navOpen ? ' nav-is-open' : ''}${isMobile ? ' nav-is-mobile' : ''}`}
       style={{ gridTemplateColumns: isMobile ? '1fr' : (navOpen ? '240px 1fr' : '0 1fr') }}
     >
       <Sidebar

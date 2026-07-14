@@ -13,6 +13,7 @@ export function createPlayer(audio) {
   let desiredPlaying = false;
   let emittedPlaying = false;
   let rate = 1;
+  let volume = 1;
   let rafId = null;
 
   const durationOf = (track, index) => {
@@ -93,6 +94,7 @@ export function createPlayer(audio) {
       audio.load();
     }
     audio.playbackRate = rate;
+    audio.volume = volume;
     applyPendingSeek();
     emit('time', globalMs());
     if (desiredPlaying) tryPlay();
@@ -193,5 +195,10 @@ export function createPlayer(audio) {
     },
     setRate(r) { rate = r; audio.playbackRate = r; },
     get rate() { return rate; },
+    setVolume(value) {
+      volume = Math.min(1, Math.max(0, Number(value) || 0));
+      audio.volume = volume;
+    },
+    get volume() { return volume; },
   };
 }

@@ -3,6 +3,7 @@ import {
   saveArticle, listArticles, getArticle,
   updateProgress, markRead, deleteArticle,
 } from '../lib/store.js';
+import { warmUpTts } from '../lib/tts/synthesize.js';
 
 export const libraryRouter = Router();
 
@@ -16,6 +17,8 @@ libraryRouter.post('/library', (req, res) => {
 });
 
 libraryRouter.get('/library/:id', (req, res) => {
+  // Opening a saved reading leads straight to narration — pre-warm the model.
+  warmUpTts();
   const rec = getArticle(req.params.id);
   if (!rec) return res.status(404).json({ error: 'Not found.' });
   res.json(rec);

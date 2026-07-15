@@ -3,8 +3,15 @@
 const MS_PER_WORD = 330;
 const SENTENCE_PADDING_MS = 260;
 const MIN_READING_MS = 700;
-const QUICK_START_WORDS = 180;
-const QUICK_START_CHARS = 1400;
+// Neural narration generates at only a few times real-time, so readings are
+// cut into ramped chunks: a tiny quick-start that is audible within seconds,
+// a short ramp chunk, then steady chunks of roughly a spoken minute each.
+const CHUNK_LIMITS = [
+  { words: 48, chars: 400 },
+  { words: 120, chars: 900 },
+  { words: 220, chars: 1600 },
+];
+const limitFor = (index) => CHUNK_LIMITS[Math.min(index, CHUNK_LIMITS.length - 1)];
 
 function estimateDuration(tokens) {
   const words = tokens.filter((token) => token.type === 'word').length;
@@ -25,37 +32,38 @@ function makeChunk(tokens, sentences) {
 }
 
 /**
- * Short readings remain one continuous track. Long readings use exactly two:
- * a quick-start section of roughly one spoken minute and one continuous
- * remainder. Both generate concurrently, so the remainder is normally warm
- * long before the only handoff in the entire article.
+ * Cut the reading into sentence-aligned chunks sized by CHUNK_LIMITS. Short
+ * readings remain one continuous track; long ones become a run of chunks the
+ * player queues gaplessly while lookahead prefetch keeps generation ahead of
+ * playback.
  */
 export function buildSynthesisChunks(article) {
   const tokens = Array.isArray(article?.tokens) ? article.tokens : [];
   const sentences = Array.isArray(article?.sentences) ? article.sentences : [];
   if (!tokens.some((token) => token.type === 'word')) return [];
 
+  const chunks = [];
+  let tokenStart = 0;
+  let sentenceStart = 0;
   let words = 0;
   let chars = 0;
-  let splitAt = -1;
   for (let i = 0; i < sentences.length - 1; i++) {
     const sentence = sentences[i];
     const sentenceTokens = tokens.slice(sentence.tokenStart, sentence.tokenEnd + 1);
     words += sentenceTokens.filter((token) => token.type === 'word').length;
     chars += sentenceTokens.reduce((sum, token) => sum + token.text.length, 0);
-    if (words >= QUICK_START_WORDS || chars >= QUICK_START_CHARS) {
-      splitAt = i + 1;
-      break;
+    const limit = limitFor(chunks.length);
+    if (words >= limit.words || chars >= limit.chars) {
+      const nextToken = sentences[i + 1].tokenStart;
+      chunks.push(makeChunk(tokens.slice(tokenStart, nextToken), sentences.slice(sentenceStart, i + 1)));
+      tokenStart = nextToken;
+      sentenceStart = i + 1;
+      words = 0;
+      chars = 0;
     }
   }
-
-  if (splitAt < 1) return [makeChunk(tokens, sentences)];
-
-  const nextToken = sentences[splitAt].tokenStart;
-  return [
-    makeChunk(tokens.slice(0, nextToken), sentences.slice(0, splitAt)),
-    makeChunk(tokens.slice(nextToken), sentences.slice(splitAt)),
-  ];
+  chunks.push(makeChunk(tokens.slice(tokenStart), sentences.slice(sentenceStart)));
+  return chunks;
 }
 
 function shiftedOffset(offsetMs, startMs) {

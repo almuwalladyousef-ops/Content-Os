@@ -11,19 +11,23 @@ export const PUBLIC_DIR = join(ROOT, 'public'); // unused in the suite (UI is po
 export const DATA_DIR = process.env.READBACK_DATA_DIR || join(ROOT, 'data');
 export const CACHE_DIR = join(DATA_DIR, 'cache');
 export const LIBRARY_DIR = join(DATA_DIR, 'library');
+// Kokoro model weights download here once (~90 MB) and are reused offline after.
+export const MODELS_DIR = join(DATA_DIR, 'models');
 
 export const PORT = process.env.PORT || 5050;
+// Kokoro voices (neural, free, generated locally). shortName is the model's voice id.
 export const LOCAL_VOICES = [
-  { shortName: 'Reed (English (US))', name: 'Reed — natural (US)', locale: 'en-US', gender: 'male' },
-  { shortName: 'Eddy (English (US))', name: 'Eddy — natural (US)', locale: 'en-US', gender: 'male' },
-  { shortName: 'Flo (English (US))', name: 'Flo — natural (US)', locale: 'en-US', gender: 'female' },
-  { shortName: 'Samantha', name: 'Samantha (US)', locale: 'en-US', gender: 'female' },
-  { shortName: 'Daniel', name: 'Daniel (UK)', locale: 'en-GB', gender: 'male' },
-  { shortName: 'Karen', name: 'Karen (AU)', locale: 'en-AU', gender: 'female' },
+  { shortName: 'af_heart', name: 'Heart — natural (US)', locale: 'en-US', gender: 'female' },
+  { shortName: 'af_bella', name: 'Bella — warm (US)', locale: 'en-US', gender: 'female' },
+  { shortName: 'af_nicole', name: 'Nicole — soft (US)', locale: 'en-US', gender: 'female' },
+  { shortName: 'am_michael', name: 'Michael — calm (US)', locale: 'en-US', gender: 'male' },
+  { shortName: 'am_fenrir', name: 'Fenrir — bold (US)', locale: 'en-US', gender: 'male' },
+  { shortName: 'bf_emma', name: 'Emma — natural (UK)', locale: 'en-GB', gender: 'female' },
+  { shortName: 'bm_george', name: 'George — steady (UK)', locale: 'en-GB', gender: 'male' },
 ];
 export const DEFAULT_VOICE = LOCAL_VOICES[0].shortName;
 
 // Ensure runtime directories exist before anything reads/writes them.
-for (const dir of [CACHE_DIR, LIBRARY_DIR]) {
+for (const dir of [CACHE_DIR, LIBRARY_DIR, MODELS_DIR]) {
   mkdirSync(dir, { recursive: true });
 }

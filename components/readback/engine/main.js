@@ -12,7 +12,7 @@ import { buildSynthesisChunks, assembleTimeline } from './timeline.js';
 // self-initializing module). All logic below is verbatim from readback's main.js.
 export function initReadback() {
 
-const DEFAULT_VOICE = 'Reed (English (US))';
+const DEFAULT_VOICE = 'af_heart';
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5];
 const $ = (id) => document.getElementById(id);
 
@@ -191,6 +191,17 @@ function prepareCurrent({ foreground = true } = {}) {
   return synthesizeChunk(index, { foreground, retry: foreground });
 }
 
+// Neural narration generates at only a few times real-time, so quietly keep
+// the next two chunks generating while the current one plays.
+function prefetchAhead() {
+  for (const index of [player.trackIndex + 1, player.trackIndex + 2]) {
+    const chunk = state.chunks[index];
+    if (chunk && !chunk.result && !chunk.promise && !chunk.error) {
+      synthesizeChunk(index).catch(() => {});
+    }
+  }
+}
+
 async function ensureAllChunks() {
   if (!state.chunks.length) throw new Error('There is no readable text.');
   const gen = state.synthGen;
@@ -328,7 +339,7 @@ player.on('time', (ms) => {
   if (readerActive()) {
     highlighter.update(ms);
     updateTimeUI(ms);
-    if (!player.paused) maybeSaveProgress();
+    if (!player.paused) { maybeSaveProgress(); prefetchAhead(); }
   }
 });
 player.on('state', (playing) => { setPlayingUI(playing); if (!playing) maybeSaveProgress(true); });
@@ -508,14 +519,16 @@ window.addEventListener('beforeunload', () => maybeSaveProgress(true));
 window.addEventListener('pagehide', () => maybeSaveProgress(true));
 document.addEventListener('visibilitychange', () => { if (document.hidden) maybeSaveProgress(true); });
 
-// Free local voices installed on the Mac mini. These require no API or network.
+// Free Kokoro neural voices, generated locally on the Mac mini — no API,
+// no network, no per-use cost. shortNames match the server's voice ids.
 const VOICES = [
-  { shortName: 'Reed (English (US))', name: 'Reed — natural (US)' },
-  { shortName: 'Eddy (English (US))', name: 'Eddy — natural (US)' },
-  { shortName: 'Flo (English (US))', name: 'Flo — natural (US)' },
-  { shortName: 'Samantha', name: 'Samantha (US)' },
-  { shortName: 'Daniel', name: 'Daniel (UK)' },
-  { shortName: 'Karen', name: 'Karen (AU)' },
+  { shortName: 'af_heart', name: 'Heart — natural (US)' },
+  { shortName: 'af_bella', name: 'Bella — warm (US)' },
+  { shortName: 'af_nicole', name: 'Nicole — soft (US)' },
+  { shortName: 'am_michael', name: 'Michael — calm (US)' },
+  { shortName: 'am_fenrir', name: 'Fenrir — bold (US)' },
+  { shortName: 'bf_emma', name: 'Emma — natural (UK)' },
+  { shortName: 'bm_george', name: 'George — steady (UK)' },
 ];
 (function populateVoices() {
   els.voice.textContent = '';

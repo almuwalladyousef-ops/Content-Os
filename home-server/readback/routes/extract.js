@@ -2,10 +2,14 @@ import { Router } from 'express';
 import { extract } from '../lib/extract/index.js';
 import { normalizeForSpeech } from '../lib/normalize.js';
 import { toDisplayTokens } from '../lib/tokenize.js';
+import { warmUpTts } from '../lib/tts/synthesize.js';
 
 export const extractRouter = Router();
 
 extractRouter.post('/extract', async (req, res) => {
+  // The reader will request narration moments after extraction; start loading
+  // the Kokoro model now so the first play doesn't pay the model-load cost.
+  warmUpTts();
   try {
     const { title, text } = await extract(req.body || {});
     const clean = normalizeForSpeech(text);

@@ -44,8 +44,9 @@ async function getJson(path) {
 
 export const api = {
   extract: (input) => post('/api/readback/extract', input),
-  // Local macOS narration renders the whole reading as one continuous MP3.
-  tts: ({ tokens, sentences, voice }) => post('/api/readback/tts', { tokens, sentences, voice }, { timeoutMs: 180000 }),
+  // Local Kokoro narration renders each chunk as one continuous MP3. Neural
+  // generation is slower than `say` was, so allow queued chunks extra time.
+  tts: ({ tokens, sentences, voice }) => post('/api/readback/tts', { tokens, sentences, voice }, { timeoutMs: 300000 }),
   voices: () => getJson('/api/readback/voices'),
   library: {
     list: () => getJson('/api/readback/library'),

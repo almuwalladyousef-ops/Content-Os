@@ -12,7 +12,7 @@ import { buildSynthesisChunks, assembleTimeline } from './timeline.js';
 // self-initializing module). All logic below is verbatim from readback's main.js.
 export function initReadback() {
 
-const DEFAULT_VOICE = 'en-US-AvaMultilingualNeural';
+const DEFAULT_VOICE = 'Reed (English (US))';
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5];
 const $ = (id) => document.getElementById(id);
 
@@ -36,15 +36,13 @@ const highlighter = createHighlighter();
 const state = {
   article: null,        // { title, tokens, sentences, wordCount, estMinutes }
   tts: null,            // virtual aggregate of ready + estimated sentence timing
-  chunks: [],           // independently synthesized sentence tracks
+  chunks: [],           // one short track, plus at most one continuous remainder
   spanByToken: null,
   voice: DEFAULT_VOICE,
   speed: 1,
   volume: 1,
   libraryId: null,
   synthGen: 0,          // generation token; bumped to supersede stale requests
-  backgroundStarted: false,
-  backgroundPromise: null,
   foregroundRequests: 0,
   lastSavedMs: 0,
 };
@@ -93,8 +91,6 @@ function refreshTimeline() {
 
 function resetSynthesis(progressMs = 0) {
   state.synthGen++;
-  state.backgroundStarted = false;
-  state.backgroundPromise = null;
   state.foregroundRequests = 0;
   els.transport.classList.remove('is-busy');
   state.chunks = buildSynthesisChunks(state.article);
@@ -127,7 +123,7 @@ function synthesizeChunk(index, { foreground = false, retry = false } = {}) {
     const foregroundGen = state.synthGen;
     chunk.foreground = true;
     setForegroundBusy(1);
-    toast('Preparing next sentence…', { sticky: true });
+    toast('Finishing continuous audio…', { sticky: true });
     return chunk.promise
       .then((res) => { if (foregroundGen === state.synthGen) hideToast(); return res; })
       .catch((err) => {
@@ -152,7 +148,7 @@ function synthesizeChunk(index, { foreground = false, retry = false } = {}) {
     toast('Preparing audio…', { sticky: true });
   }
 
-  chunk.promise = api.ttsChunk({
+  chunk.promise = api.tts({
     tokens: chunk.tokens,
     sentences: chunk.sentences,
     voice,
@@ -189,48 +185,10 @@ function synthesizeChunk(index, { foreground = false, retry = false } = {}) {
   return chunk.promise;
 }
 
-function prioritizedIndexes(from) {
-  const indexes = [];
-  for (let i = from + 1; i < state.chunks.length; i++) indexes.push(i);
-  for (let i = 0; i < from; i++) indexes.push(i);
-  return indexes;
-}
-
-function startBackground(from = player.trackIndex) {
-  if (state.backgroundStarted) return state.backgroundPromise || Promise.resolve();
-  state.backgroundStarted = true;
-  const gen = state.synthGen;
-  const pending = prioritizedIndexes(from);
-  let cursor = 0;
-
-  async function worker() {
-    while (cursor < pending.length && gen === state.synthGen) {
-      const index = pending[cursor++];
-      try { await synthesizeChunk(index); } catch { /* retry on demand */ }
-    }
-  }
-
-  state.backgroundPromise = Promise.all([worker(), worker(), worker()]);
-  return state.backgroundPromise;
-}
-
-function prefetchAhead(from) {
-  for (let index = from + 1; index <= Math.min(from + 4, state.chunks.length - 1); index++) {
-    synthesizeChunk(index).catch(() => {});
-  }
-}
-
 function prepareCurrent({ foreground = true } = {}) {
   if (!state.chunks.length) return Promise.reject(new Error('There is no readable text.'));
   const index = player.trackIndex;
-  const gen = state.synthGen;
-  return synthesizeChunk(index, { foreground, retry: foreground })
-    .then((res) => {
-      if (gen !== state.synthGen) return res;
-      prefetchAhead(index);
-      startBackground(index);
-      return res;
-    });
+  return synthesizeChunk(index, { foreground, retry: foreground });
 }
 
 async function ensureAllChunks() {
@@ -286,12 +244,12 @@ function openArticle(article, { libraryId = null, progressMs = 0 } = {}) {
   els.reading.closest('main.scroll, .scroll')?.scrollTo({ top: 0 });
   showView('reader');
 
-  // Start the larger following blocks immediately, in parallel with the small
-  // first block. Playback no longer has to wait for block one to finish before
-  // generation of the rest of the reading even begins.
+  // Generate the quick-start track first, then immediately generate the single
+  // continuous remainder in parallel so it is warm before the only handoff.
   const gen = state.synthGen;
-  startBackground(player.trackIndex);
-  prepareAudio().then(() => {
+  const preparation = prepareAudio();
+  if (state.chunks[1]) synthesizeChunk(1).catch(() => {});
+  preparation.then(() => {
     if (gen !== state.synthGen) return;
     if (progressMs > 0) {
       updateTimeUI(progressMs);
@@ -374,13 +332,9 @@ player.on('time', (ms) => {
   }
 });
 player.on('state', (playing) => { setPlayingUI(playing); if (!playing) maybeSaveProgress(true); });
-player.on('track', (index) => {
-  if (state.chunks[index]?.result) prefetchAhead(index);
-});
 player.on('needtrack', (index) => {
   const gen = state.synthGen;
   synthesizeChunk(index, { foreground: true, retry: true })
-    .then(() => { if (gen === state.synthGen) startBackground(index); })
     .catch(() => { if (gen === state.synthGen) player.pause(); });
 });
 player.on('error', () => {
@@ -405,7 +359,8 @@ async function showLibrary() {
 async function openFromLibrary(id) {
   try {
     const rec = await api.library.get(id);
-    state.voice = rec.voice || DEFAULT_VOICE;
+    const savedVoice = rec.voice || DEFAULT_VOICE;
+    state.voice = VOICES.some((voice) => voice.shortName === savedVoice) ? savedVoice : DEFAULT_VOICE;
     els.voice.value = state.voice;
     openArticle(rec, { libraryId: id, progressMs: rec.progressMs || 0 });
   } catch (err) {
@@ -553,14 +508,14 @@ window.addEventListener('beforeunload', () => maybeSaveProgress(true));
 window.addEventListener('pagehide', () => maybeSaveProgress(true));
 document.addEventListener('visibilitychange', () => { if (document.hidden) maybeSaveProgress(true); });
 
-// A short, curated set of the most natural voices — no need for the full 322.
+// Free local voices installed on the Mac mini. These require no API or network.
 const VOICES = [
-  { shortName: 'en-US-AvaMultilingualNeural', name: 'Ava — warm (US)' },
-  { shortName: 'en-US-AndrewMultilingualNeural', name: 'Andrew — calm (US)' },
-  { shortName: 'en-US-EmmaMultilingualNeural', name: 'Emma — bright (US)' },
-  { shortName: 'en-US-BrianMultilingualNeural', name: 'Brian — easy (US)' },
-  { shortName: 'en-GB-SoniaNeural', name: 'Sonia (UK)' },
-  { shortName: 'en-AU-NatashaNeural', name: 'Natasha (AU)' },
+  { shortName: 'Reed (English (US))', name: 'Reed — natural (US)' },
+  { shortName: 'Eddy (English (US))', name: 'Eddy — natural (US)' },
+  { shortName: 'Flo (English (US))', name: 'Flo — natural (US)' },
+  { shortName: 'Samantha', name: 'Samantha (US)' },
+  { shortName: 'Daniel', name: 'Daniel (UK)' },
+  { shortName: 'Karen', name: 'Karen (AU)' },
 ];
 (function populateVoices() {
   els.voice.textContent = '';

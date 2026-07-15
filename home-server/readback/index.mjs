@@ -7,7 +7,7 @@ import { voicesRouter } from './routes/voices.js';
 import { libraryRouter } from './routes/library.js';
 
 /**
- * Mounts the Readback engine (Microsoft Edge neural TTS + article extraction +
+ * Mounts the Readback engine (local macOS TTS + article extraction +
  * karaoke timing + saved library) under `/readback-api/*` on the given Express
  * app. ESM module — server.js loads it via dynamic import() because server.js is
  * CommonJS. Data dirs come from config.js (READBACK_DATA_DIR, set by server.js).

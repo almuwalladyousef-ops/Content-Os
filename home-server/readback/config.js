@@ -13,7 +13,15 @@ export const CACHE_DIR = join(DATA_DIR, 'cache');
 export const LIBRARY_DIR = join(DATA_DIR, 'library');
 
 export const PORT = process.env.PORT || 5050;
-export const DEFAULT_VOICE = 'en-US-AvaMultilingualNeural';
+export const LOCAL_VOICES = [
+  { shortName: 'Reed (English (US))', name: 'Reed — natural (US)', locale: 'en-US', gender: 'male' },
+  { shortName: 'Eddy (English (US))', name: 'Eddy — natural (US)', locale: 'en-US', gender: 'male' },
+  { shortName: 'Flo (English (US))', name: 'Flo — natural (US)', locale: 'en-US', gender: 'female' },
+  { shortName: 'Samantha', name: 'Samantha (US)', locale: 'en-US', gender: 'female' },
+  { shortName: 'Daniel', name: 'Daniel (UK)', locale: 'en-GB', gender: 'male' },
+  { shortName: 'Karen', name: 'Karen (AU)', locale: 'en-AU', gender: 'female' },
+];
+export const DEFAULT_VOICE = LOCAL_VOICES[0].shortName;
 
 // Ensure runtime directories exist before anything reads/writes them.
 for (const dir of [CACHE_DIR, LIBRARY_DIR]) {

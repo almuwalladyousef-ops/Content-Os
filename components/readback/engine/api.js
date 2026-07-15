@@ -44,12 +44,8 @@ async function getJson(path) {
 
 export const api = {
   extract: (input) => post('/api/readback/extract', input),
-  // The legacy full-document endpoint remains available. New playback uses the
-  // sentence endpoint so the first audio is returned without waiting for the
-  // rest of the article.
+  // Local macOS narration renders the whole reading as one continuous MP3.
   tts: ({ tokens, sentences, voice }) => post('/api/readback/tts', { tokens, sentences, voice }, { timeoutMs: 180000 }),
-  ttsChunk: ({ tokens, sentences, voice }) =>
-    post('/api/readback/tts/chunk', { tokens, sentences, voice }, { timeoutMs: 65000 }),
   voices: () => getJson('/api/readback/voices'),
   library: {
     list: () => getJson('/api/readback/library'),

@@ -3,81 +3,59 @@ import assert from 'node:assert/strict';
 import { buildSynthesisChunks, assembleTimeline } from './timeline.js';
 import { toDisplayTokens } from '../../../home-server/readback/lib/tokenize.js';
 
-const tokens = [
-  { i: 0, type: 'word', text: 'First' },
-  { i: 1, type: 'punct', text: '.' },
-  { i: 2, type: 'space', text: ' ' },
-  { i: 3, type: 'word', text: 'Second' },
-  { i: 4, type: 'space', text: ' ' },
-  { i: 5, type: 'word', text: 'sentence' },
-  { i: 6, type: 'punct', text: '.' },
-];
-const sentences = [
-  { i: 0, tokenStart: 0, tokenEnd: 1 },
-  { i: 1, tokenStart: 3, tokenEnd: 6 },
-];
-
-test('buildSynthesisChunks groups nearby sentences without losing token indexes', () => {
-  const chunks = buildSynthesisChunks({ tokens, sentences });
+test('buildSynthesisChunks keeps the full reading and token indexes in one track', () => {
+  const article = toDisplayTokens('First. Second sentence. Third.');
+  const chunks = buildSynthesisChunks(article);
   assert.equal(chunks.length, 1);
-  assert.deepEqual(chunks[0].tokens.map((token) => token.i), [0, 1, 2, 3, 4, 5, 6]);
-  assert.deepEqual(chunks[0].sentences.map((sentence) => sentence.i), [0, 1]);
+  assert.deepEqual(chunks[0].tokens.map((token) => token.i), article.tokens.map((token) => token.i));
+  assert.deepEqual(chunks[0].sentences.map((sentence) => sentence.i), [0, 1, 2]);
   assert.ok(chunks[0].estimatedDurationMs > 0);
 });
 
-test('buildSynthesisChunks keeps abbreviations and decimals in one speech chunk', () => {
-  const article = toDisplayTokens('Dr. Smith paid 3.14 dollars. This works.');
-  const chunks = buildSynthesisChunks(article);
-  assert.equal(chunks.length, 1);
-  assert.equal(chunks[0].tokens.map((token) => token.text).join(''), 'Dr. Smith paid 3.14 dollars. This works.');
-  assert.equal(chunks[0].sentences.length, 2);
-});
-
-test('buildSynthesisChunks lets the voice read short sentences in one natural group', () => {
-  const article = toDisplayTokens('No. Go! This works.');
-  const chunks = buildSynthesisChunks(article);
-  assert.deepEqual(chunks.map((chunk) => chunk.tokens.map((token) => token.text).join('')), ['No. Go!', 'This works.']);
-});
-
-test('buildSynthesisChunks keeps the first group small for quick playback', () => {
+test('short readings never create a transition', () => {
   const article = toDisplayTokens('One. Two. Three. Four. Five.');
   const chunks = buildSynthesisChunks(article);
-  assert.deepEqual(chunks.map((chunk) => chunk.sentences.length), [2, 3]);
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0].sentences.length, 5);
+  assert.equal(chunks[0].tokens.map((token) => token.text).join(''), article.tokens.map((token) => token.text).join(''));
 });
 
-test('buildSynthesisChunks makes larger following blocks to reduce playback gaps', () => {
-  const article = toDisplayTokens(
-    'One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten. Eleven. Twelve. Thirteen. Fourteen.',
-  );
+test('long readings use only a quick-start track and one continuous remainder', () => {
+  const sentence = 'Clear narration keeps every word understandable and every sentence moving naturally.';
+  const article = toDisplayTokens(Array.from({ length: 80 }, () => sentence).join(' '));
   const chunks = buildSynthesisChunks(article);
-  assert.deepEqual(chunks.map((chunk) => chunk.sentences.length), [2, 10, 2]);
+  assert.equal(chunks.length, 2);
+  assert.ok(chunks[0].tokens.filter((token) => token.type === 'word').length >= 180);
+  assert.equal(chunks.flatMap((chunk) => chunk.sentences).length, article.sentences.length);
+  assert.equal(
+    chunks.flatMap((chunk) => chunk.tokens).filter((token) => token.type === 'word').length,
+    article.tokens.filter((token) => token.type === 'word').length,
+  );
 });
 
-test('assembleTimeline exposes estimates before synthesis finishes', () => {
-  const chunks = buildSynthesisChunks({ tokens, sentences });
+test('assembleTimeline exposes estimates before local synthesis finishes', () => {
+  const chunks = buildSynthesisChunks(toDisplayTokens('First. Second sentence.'));
   const timeline = assembleTimeline(chunks);
   assert.equal(timeline.ready, false);
   assert.equal(timeline.words.length, 3);
-  assert.equal(timeline.sentences[1].offsetMs, 0);
+  assert.equal(timeline.sentences[0].offsetMs, 0);
   assert.equal(timeline.durationMs, chunks[0].estimatedDurationMs);
 });
 
-test('assembleTimeline shifts real word and sentence timing onto one timeline', () => {
-  const chunks = buildSynthesisChunks(toDisplayTokens('First. Second sentence. Third.'));
+test('assembleTimeline uses the continuous track real timing', () => {
+  const chunks = buildSynthesisChunks(toDisplayTokens('First. Second sentence.'));
   chunks[0].result = {
-    durationMs: 1000,
-    words: [{ tokenIndex: 0, text: 'First', offsetMs: 100, durationMs: 300 }],
-    sentences: chunks[0].sentences.map((sentence, index) => ({ ...sentence, offsetMs: 100 + index * 400 })),
-  };
-  chunks[1].result = {
     durationMs: 1800,
-    words: [{ tokenIndex: chunks[1].tokenStart, text: 'Third', offsetMs: 50, durationMs: 300 }],
-    sentences: [{ ...chunks[1].sentences[0], offsetMs: 50 }],
+    words: [
+      { tokenIndex: 0, text: 'First', offsetMs: 100, durationMs: 300 },
+      { tokenIndex: 3, text: 'Second', offsetMs: 900, durationMs: 300 },
+    ],
+    sentences: chunks[0].sentences.map((sentence, index) => ({ ...sentence, offsetMs: 100 + index * 800 })),
   };
 
   const timeline = assembleTimeline(chunks);
   assert.equal(timeline.ready, true);
-  assert.equal(timeline.durationMs, 2800);
-  assert.equal(timeline.words[1].offsetMs, 1050);
-  assert.equal(timeline.sentences[2].offsetMs, 1050);
+  assert.equal(timeline.durationMs, 1800);
+  assert.equal(timeline.words[1].offsetMs, 900);
+  assert.equal(timeline.sentences[1].offsetMs, 900);
 });

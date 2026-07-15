@@ -45,6 +45,14 @@ test('buildSynthesisChunks keeps the first group small for quick playback', () =
   assert.deepEqual(chunks.map((chunk) => chunk.sentences.length), [2, 3]);
 });
 
+test('buildSynthesisChunks makes larger following blocks to reduce playback gaps', () => {
+  const article = toDisplayTokens(
+    'One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten. Eleven. Twelve. Thirteen. Fourteen.',
+  );
+  const chunks = buildSynthesisChunks(article);
+  assert.deepEqual(chunks.map((chunk) => chunk.sentences.length), [2, 10, 2]);
+});
+
 test('assembleTimeline exposes estimates before synthesis finishes', () => {
   const chunks = buildSynthesisChunks({ tokens, sentences });
   const timeline = assembleTimeline(chunks);

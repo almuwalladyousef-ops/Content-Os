@@ -6,9 +6,10 @@
 const MS_PER_WORD = 330;
 const SENTENCE_PADDING_MS = 260;
 const MIN_SENTENCE_MS = 700;
-const MAX_GROUP_SENTENCES = 3;
+const MAX_GROUP_SENTENCES = 10;
 const MAX_FIRST_GROUP_SENTENCES = 2;
-const MAX_GROUP_CHARS = 420;
+const MAX_FIRST_GROUP_CHARS = 420;
+const MAX_GROUP_CHARS = 1500;
 
 function estimateDuration(tokens) {
   const words = tokens.filter((token) => token.type === 'word').length;
@@ -78,9 +79,9 @@ function speechRanges(tokens, sentences) {
 }
 
 // Separate audio files add decoder/loading silence on top of the voice's own
-// punctuation pause. Keep a small group of sentences in each file so periods
-// use the voice's natural cadence, while the first request stays short enough
-// to begin quickly.
+// punctuation pause. Keep the first request short enough to begin quickly, then
+// use much larger blocks so periods retain the voice's natural cadence and file
+// transitions are rare.
 function readingGroups(tokens, sentences) {
   const ranges = speechRanges(tokens, sentences);
   const groups = [];
@@ -92,10 +93,12 @@ function readingGroups(tokens, sentences) {
   };
 
   for (const sentence of ranges) {
-    const limit = groups.length === 0 ? MAX_FIRST_GROUP_SENTENCES : MAX_GROUP_SENTENCES;
+    const isFirstGroup = groups.length === 0;
+    const limit = isFirstGroup ? MAX_FIRST_GROUP_SENTENCES : MAX_GROUP_SENTENCES;
+    const charLimit = isFirstGroup ? MAX_FIRST_GROUP_CHARS : MAX_GROUP_CHARS;
     const nextStart = current?.tokenStart ?? sentence.tokenStart;
     const nextText = tokens.slice(nextStart, sentence.tokenEnd + 1).map((token) => token.text).join('');
-    if (current && (current.sentences.length >= limit || nextText.length > MAX_GROUP_CHARS)) flush();
+    if (current && (current.sentences.length >= limit || nextText.length > charLimit)) flush();
 
     if (!current) {
       current = {

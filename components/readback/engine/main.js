@@ -49,29 +49,9 @@ const state = {
   lastSavedMs: 0,
 };
 
-// --- Session persistence (survive a page refresh) --------------------------
-const SESSION_KEY = 'readback:session';
-let lastSessionSave = 0;
-function saveSession() {
-  if (!state.article) return;
-  try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({
-      article: state.article,
-      voice: state.voice,
-      speed: state.speed,
-      volume: state.volume,
-      libraryId: state.libraryId,
-      progressMs: player.currentMs || state.lastSavedMs || 0,
-    }));
-    lastSessionSave = Date.now();
-  } catch { /* quota or disabled storage — non-fatal */ }
-}
-function loadSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
-}
-function clearSession() {
-  try { localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
-}
+// Remove the legacy auto-restored draft once. Readings now persist only when
+// the user explicitly saves them to the server-backed Library.
+try { localStorage.removeItem('readback:session'); } catch { /* storage may be disabled */ }
 
 // --- View routing ----------------------------------------------------------
 function showView(name) {
@@ -230,12 +210,12 @@ function startBackground(from = player.trackIndex) {
     }
   }
 
-  state.backgroundPromise = Promise.all([worker(), worker()]);
+  state.backgroundPromise = Promise.all([worker(), worker(), worker()]);
   return state.backgroundPromise;
 }
 
 function prefetchAhead(from) {
-  for (let index = from + 1; index <= Math.min(from + 2, state.chunks.length - 1); index++) {
+  for (let index = from + 1; index <= Math.min(from + 4, state.chunks.length - 1); index++) {
     synthesizeChunk(index).catch(() => {});
   }
 }
@@ -305,11 +285,12 @@ function openArticle(article, { libraryId = null, progressMs = 0 } = {}) {
   els.viewReader?.scrollTo({ top: 0 });
   els.reading.closest('main.scroll, .scroll')?.scrollTo({ top: 0 });
   showView('reader');
-  saveSession();
 
-  // Prepare only the current sentence eagerly. It can start while upcoming
-  // sentences synthesize behind it.
+  // Start the larger following blocks immediately, in parallel with the small
+  // first block. Playback no longer has to wait for block one to finish before
+  // generation of the rest of the reading even begins.
   const gen = state.synthGen;
+  startBackground(player.trackIndex);
   prepareAudio().then(() => {
     if (gen !== state.synthGen) return;
     if (progressMs > 0) {
@@ -382,8 +363,6 @@ function maybeSaveProgress(force = false) {
     state.lastSavedMs = ms;
     api.library.patch(state.libraryId, { progressMs: ms }).catch(() => {});
   }
-  // Session (localStorage) — always, so a refresh resumes where you were.
-  if (force || Date.now() - lastSessionSave >= 4000) saveSession();
 }
 
 // --- Player events ---------------------------------------------------------
@@ -452,8 +431,10 @@ async function saveCurrent() {
       audioHash: hashFromUrl(firstAudioUrl),
       wordCount: state.article.wordCount,
       durationMs: effectiveDuration(),
+      progressMs: player.currentMs,
     });
     state.libraryId = rec.id;
+    state.lastSavedMs = rec.progressMs || 0;
     toast('Saved to library');
   } catch (err) {
     toast(err.message || 'Could not save.');
@@ -499,12 +480,11 @@ initInput({
   setBusy: setInputBusy,
 });
 
-// The logo starts a fresh reading: stop, forget the restored session, clear state.
+// The logo starts a fresh reading and clears all transient state.
 els.brand.addEventListener('click', () => {
   player.pause();
   state.synthGen++;
   player.setQueue([]);
-  clearSession();
   state.article = null;
   state.tts = null;
   state.chunks = [];
@@ -541,11 +521,9 @@ els.voice.addEventListener('change', () => {
   resetSynthesis(resumeAt);
   if (wasPlaying) startPlayback();
   else prepareAudio();
-  saveSession();
 });
 els.volume.addEventListener('input', () => {
   setVolume(Number(els.volume.value) / 100);
-  saveSession();
 });
 
 // Click any word to jump there.
@@ -570,7 +548,7 @@ initShortcuts({
 window.addEventListener('scroll', () => {
   els.topbar.classList.toggle('is-stuck', window.scrollY > 4);
 }, { passive: true });
-// Save your spot when the tab is hidden or closed (covers refresh, close, app switch).
+// Only explicitly saved library items persist progress across a reload.
 window.addEventListener('beforeunload', () => maybeSaveProgress(true));
 window.addEventListener('pagehide', () => maybeSaveProgress(true));
 document.addEventListener('visibilitychange', () => { if (document.hidden) maybeSaveProgress(true); });
@@ -595,17 +573,8 @@ const VOICES = [
   els.voice.value = state.voice;
 })();
 
-// Restore the last reading so a page refresh resumes where you left off.
-(function restoreSession() {
-  const sess = loadSession();
-  if (!sess || !sess.article) {
-    setVolume(1);
-    return;
-  }
-  state.voice = sess.voice || DEFAULT_VOICE;
-  state.speed = Number(sess.speed) || 1;
-  setVolume(sess.volume == null ? 1 : Number(sess.volume));
-  openArticle(sess.article, { libraryId: sess.libraryId || null, progressMs: sess.progressMs || 0 });
-})();
+// A reload always opens a clean reader. Saved items remain available through
+// Library and resume from their server-side progress when explicitly opened.
+setVolume(1);
 
 }

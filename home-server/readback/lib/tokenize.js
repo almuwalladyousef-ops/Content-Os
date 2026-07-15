@@ -16,7 +16,7 @@
  * covering one sentence (terminated by . ! ? or a paragraph break).
  */
 const TOKEN_RE =
-  /([A-Za-z0-9]+(?:['-][A-Za-z0-9]+)*)|(\n+)|([ \t]+)|([^\sA-Za-z0-9]+)/g;
+  /([\p{L}\p{N}]+(?:['-][\p{L}\p{N}]+)*)|(\n+)|([ \t]+)|([^\s\p{L}\p{N}]+)/gu;
 
 export function toDisplayTokens(text) {
   const tokens = [];

@@ -38,7 +38,7 @@ export function saveArticle(article, dir = LIBRARY_DIR) {
     wordCount: article.wordCount || 0,
     durationMs: article.durationMs ?? null,
     createdAt,
-    progressMs: 0,
+    progressMs: Math.max(0, Number(article.progressMs) || 0),
     read: false,
   };
   writeRec(rec, dir);
@@ -51,7 +51,9 @@ export function listArticles(dir = LIBRARY_DIR) {
   const recs = readdirSync(dir)
     .filter((f) => f.endsWith('.json'))
     .map((f) => {
-      const { tokens, sentences, ...meta } = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+      const meta = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+      delete meta.tokens;
+      delete meta.sentences;
       return meta;
     });
   recs.sort((a, b) => b.createdAt - a.createdAt);

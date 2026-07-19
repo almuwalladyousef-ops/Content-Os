@@ -11,7 +11,7 @@ Vercel (contentos-flame.vercel.app)            Mac mini (home-server/, port 3737
 ├─ /board          native vault kanban          ├─ /linkscribe/*    yt-dlp + local Whisper
 ├─ /linkscribe                    (LinkScribe)  ├─ vault API (scan/write/create/delete)
 ├─ /readback                      (Readback)    ├─ Google proxies + /open + legacy board at /
-└─ /api/…  all APIs + OAuth callbacks           └─ heartbeat → /api/cron/post + daily DM tick
+└─ /api/…  all APIs + OAuth callbacks           └─ due-time scheduler + daily DM tick
         │                                                     ▲
         └──── HTTPS (Tailscale Funnel) + Bearer HOME_SERVER_SECRET ┘
 

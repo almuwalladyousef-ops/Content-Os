@@ -2,7 +2,7 @@
   "name": "contentos-home-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Always-on Mac mini companion for Content OS: vault board, large-file storage, readback engine, linkscribe jobs, schedule heartbeat.",
+  "description": "Always-on Mac mini companion for Content OS: vault board, large-file storage, readback engine, linkscribe jobs, event-driven scheduler.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

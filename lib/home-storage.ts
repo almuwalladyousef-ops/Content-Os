@@ -62,6 +62,21 @@ export async function deleteFile(key: string): Promise<void> {
   }
 }
 
+/** Tells the Mac mini to wake the Vercel worker when a scheduled post is due. */
+export async function wakeSchedule(scheduledAt: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl()}/api/schedule/wake`, {
+      method: 'POST',
+      headers: headers({ 'content-type': 'application/json' }),
+      body: JSON.stringify({ scheduledAt }),
+      signal: AbortSignal.timeout(5000),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 /** True when a home server is configured and answering. */
 export async function homeServerOnline(): Promise<boolean> {
   try {

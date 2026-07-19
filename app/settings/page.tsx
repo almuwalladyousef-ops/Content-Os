@@ -139,7 +139,7 @@ function HomeServerCard() {
             )}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-mute)', marginTop: 2 }}>
-            Mac mini — video storage, uploads, readback, scheduled-post heartbeat
+            Mac mini: video storage, uploads, readback, scheduled-post timer
           </div>
           {state !== null && !online && (
             <div style={{ fontSize: 11.5, color: 'var(--text-2)', marginTop: 8 }}>

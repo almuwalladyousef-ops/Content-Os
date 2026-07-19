@@ -10,8 +10,10 @@ launchd `KeepAlive`) that serves everything the Vercel app can't:
   karaoke timing, saved library).
 - **`/linkscribe/*`** — job runner: downloads a URL with `yt-dlp`, transcribes with **local
   Whisper**. Bearer-guarded.
-- **heartbeat** — every 60s it pings `POSTER_URL/api/cron/post` (fires due scheduled posts and
-  mirrors returned jobs into the vault board); once a day it pings
+- **event-driven scheduler**: Vercel sends each new post's due time once; the mini holds a
+  local timer and calls `POSTER_URL/api/cron/post` only when due. A startup check and one daily
+  recovery check rebuild the timer after outages. Returned jobs are mirrored into the vault
+  board. Once a day it also pings
   `POSTER_URL/api/dm/refresh-token` to refresh Instagram long-lived tokens.
 
 All data lives under `DATA_DIR` (default `~/ContentOS-data/`):

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { readDB, writeDB } from '@/lib/dm/driveDB'
 import { refreshLongLivedToken } from '@/lib/instagram'
 
-// Called daily by the home-server heartbeat (Bearer CRON_SECRET). Refreshes
+// Called by the daily home-server maintenance tick (Bearer CRON_SECRET). Refreshes
 // every stored Instagram Login long-lived token for another ~60 days. Runs
 // unguarded when CRON_SECRET is unset (personal single-user app).
 export async function POST(req) {

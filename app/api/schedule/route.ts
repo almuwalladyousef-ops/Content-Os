@@ -5,6 +5,7 @@ import {
   getTikTokConnectionRaw,
 } from '@/lib/connections'
 import { addJob, loadQueue, toPublicJob, type ScheduledJob, type TokenSnapshot } from '@/lib/schedule-store'
+import { wakeSchedule } from '@/lib/home-storage'
 
 export const maxDuration = 60
 
@@ -67,7 +68,8 @@ export async function POST(req: NextRequest) {
     }
 
     await addJob(job)
-    return NextResponse.json({ ok: true, jobId: job.id, scheduledAt: job.scheduledAt })
+    const schedulerNotified = await wakeSchedule(job.scheduledAt)
+    return NextResponse.json({ ok: true, jobId: job.id, scheduledAt: job.scheduledAt, schedulerNotified })
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e instanceof Error ? e.message : e) }, { status: 500 })
   }

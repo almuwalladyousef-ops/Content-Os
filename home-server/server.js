@@ -4,6 +4,7 @@ const express = require('express');
 const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 // Load .env (works both standalone and when required by main.js)
 // A repointed desktop launch agent can keep using the packaged app's existing
@@ -654,19 +655,67 @@ app.get('/api/calendars', async (req, res) => {
   }
 });
 
-// ── Scheduled posts: heartbeat + board sync ──────────────────────────────────
+// ── Scheduled posts: local timer + board sync ──────────────────────────────
 //
 // The Poster (Vercel) holds the queue of scheduled posts but has no clock of its
-// own and can't reach this machine's vault. So this always-on local server is
-// the heartbeat: once a minute it pings the Poster's worker, which fires any due
-// posts and returns the current queue. We then mirror that queue into the vault
-// board — scheduled posts appear under "Scheduled" (04 Ready to Post) and move
-// to "Posted" (05 Posted) once they've gone out. Entirely best-effort.
+// own and can't reach this machine's vault. When a post is scheduled, Vercel
+// sends its due time here once. This server holds the timer locally and calls
+// the worker only when needed. Startup and daily recovery calls rebuild the
+// timer after outages. Returned jobs are mirrored into the vault board.
 
 const POSTER_URL = (process.env.POSTER_URL || 'https://contentos-flame.vercel.app').replace(/\/+$/, '');
 const CRON_SECRET = process.env.CRON_SECRET || '';
 const SCHED_DIR = '04 Board/05 Ready to Post';
 const POSTED_DIR = '04 Board/06 Posted';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const RETRY_MS = 15 * 60 * 1000;
+
+let scheduleTimer = null;
+let scheduledWakeAt = null;
+let scheduleWorkerRunning = false;
+
+function homeServerAuthed(req) {
+  if (!HOME_SERVER_SECRET) return true;
+  const header = String(req.headers.authorization || '');
+  const bearer = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const candidate = bearer || String(req.query.secret || '');
+  if (!candidate || candidate.length !== HOME_SERVER_SECRET.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(candidate), Buffer.from(HOME_SERVER_SECRET));
+}
+
+function armScheduleTimer(value) {
+  const dueAt = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  if (!Number.isFinite(dueAt)) return false;
+
+  // An existing earlier wake already covers this job.
+  if (scheduleTimer && scheduledWakeAt != null && scheduledWakeAt <= dueAt) return true;
+  if (scheduleTimer) clearTimeout(scheduleTimer);
+
+  scheduledWakeAt = dueAt;
+  const remaining = Math.max(1000, dueAt - Date.now());
+  const delay = Math.min(remaining, DAY_MS);
+  scheduleTimer = setTimeout(() => {
+    scheduleTimer = null;
+    if (scheduledWakeAt != null && Date.now() + 500 < scheduledWakeAt) {
+      armScheduleTimer(scheduledWakeAt);
+      return;
+    }
+    scheduledWakeAt = null;
+    scheduleWorkerTick();
+  }, delay);
+  scheduleTimer.unref?.();
+  console.log(`[schedule] local wake armed for ${new Date(dueAt).toISOString()}`);
+  return true;
+}
+
+function armNextPending(jobs) {
+  const next = (jobs || [])
+    .filter(job => job && job.status === 'pending')
+    .map(job => new Date(job.scheduledAt).getTime())
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)[0];
+  if (next != null) armScheduleTimer(next);
+}
 
 function schedTitle(job) {
   const firstLine = (s) => String(s || '').split('\n').map(x => x.trim()).find(Boolean) || '';
@@ -730,26 +779,43 @@ function syncScheduleCards(jobs) {
   }
 }
 
-async function scheduleHeartbeat() {
+async function scheduleWorkerTick() {
+  if (scheduleWorkerRunning) return;
+  scheduleWorkerRunning = true;
   try {
     const res = await fetch(`${POSTER_URL}/api/cron/post`, {
       method: 'GET',
       headers: CRON_SECRET ? { authorization: `Bearer ${CRON_SECRET}` } : {},
     });
-    if (!res.ok) { console.log('[schedule] worker responded', res.status); return; }
+    if (!res.ok) {
+      console.log('[schedule] worker responded', res.status);
+      armScheduleTimer(Date.now() + RETRY_MS);
+      return;
+    }
     const data = await res.json();
     if (data && Array.isArray(data.jobs)) {
       if (data.due) console.log(`[schedule] worker fired ${data.due} due post(s)`);
       syncScheduleCards(data.jobs);
+      armNextPending(data.jobs);
     }
   } catch (e) {
-    console.log('[schedule] heartbeat error:', e.message);
+    console.log('[schedule] worker error:', e.message);
+    armScheduleTimer(Date.now() + RETRY_MS);
+  } finally {
+    scheduleWorkerRunning = false;
   }
 }
 
-setTimeout(scheduleHeartbeat, 8000);          // shortly after launch
-setInterval(scheduleHeartbeat, 60 * 1000);    // then every minute while the app runs
-console.log(`[schedule] heartbeat enabled → ${POSTER_URL}${CRON_SECRET ? ' (secured)' : ''}`);
+app.post('/api/schedule/wake', (req, res) => {
+  if (!homeServerAuthed(req)) return res.status(401).json({ error: 'bad or missing secret' });
+  const scheduledAt = req.body && req.body.scheduledAt;
+  if (!armScheduleTimer(scheduledAt)) return res.status(400).json({ error: 'invalid scheduledAt' });
+  res.json({ ok: true, scheduledAt: new Date(scheduledAt).toISOString() });
+});
+
+setTimeout(scheduleWorkerTick, 8000);       // recover the queue shortly after launch
+setInterval(scheduleWorkerTick, DAY_MS);    // one daily recovery check
+console.log(`[schedule] event-driven timer enabled → ${POSTER_URL}${CRON_SECRET ? ' (secured)' : ''}`);
 
 // Daily tick: refresh long-lived Instagram tokens in the DM engine
 // (replaces triggerdm's monthly vercel.json cron — this machine is the only clock).

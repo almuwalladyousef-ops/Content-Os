@@ -12,10 +12,5 @@ export default async function EditRulePage({ params }) {
 
   if (!rule) notFound()
 
-  return (
-    <div className="page">
-      <h1>Edit Rule</h1>
-      <RuleEditor initial={rule} />
-    </div>
-  )
+  return <RuleEditor initial={rule} />
 }

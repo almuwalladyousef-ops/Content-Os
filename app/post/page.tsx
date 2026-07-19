@@ -1,10 +1,10 @@
 'use client'
 
-import { useRef, useState, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { uploadMedia, deleteMedia } from '@/lib/media-upload'
 import StatusDot from '@/components/StatusDot'
 import {
-  IconUpload, IconFilm, IconX, IconArrowRight, IconClock,
+  IconUpload, IconX, IconArrowRight,
   IconSparkles, LogoYouTube, PlatformIcon,
 } from '@/components/Icons'
 import { PostStatus } from '@/lib/types'
@@ -24,134 +24,48 @@ async function safeJson(res: Response) {
   try { return JSON.parse(text) } catch { return { error: text || `HTTP ${res.status}` } }
 }
 
-// ── Toggle switch ─────────────────────────────────────────────────────────────
-function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
-  return (
-    <button
-      onClick={() => !disabled && onChange(!checked)}
-      style={{
-        width: 30, height: 18, borderRadius: 999, padding: 2,
-        background: checked ? 'var(--accent)' : 'var(--surface-3)',
-        display: 'flex',
-        boxShadow: checked ? '0 0 8px var(--accent-glow)' : 'none',
-        transition: 'all 180ms ease',
-        opacity: disabled ? 0.5 : 1,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        flexShrink: 0,
-      }}
-    >
-      <div style={{
-        width: 14, height: 14, borderRadius: 999,
-        background: checked ? 'oklch(0.18 0.013 255)' : 'var(--text-mute)',
-        marginLeft: checked ? 'auto' : 0,
-        transition: 'all 180ms cubic-bezier(0.2, 0.7, 0.2, 1)',
-      }} />
-    </button>
-  )
-}
-
-// ── Privacy radio ─────────────────────────────────────────────────────────────
-function PrivacyRadio({ value, onChange, options }: {
-  value: string
-  onChange: (v: string) => void
-  options: (string | [string, string])[]
-}) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {options.map(opt => {
-        const val = Array.isArray(opt) ? opt[0] : opt
-        const label = Array.isArray(opt) ? opt[1] : opt
-        const active = value === val
-        return (
-          <button
-            key={val}
-            onClick={() => onChange(val)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '7px 10px', borderRadius: 8, textAlign: 'left', width: '100%',
-              background: active ? 'var(--accent-dim)' : 'transparent',
-              border: `1px solid ${active ? 'oklch(0.80 0.16 80 / 0.4)' : 'transparent'}`,
-              transition: 'background 120ms ease',
-            }}
-          >
-            <span style={{
-              width: 14, height: 14, borderRadius: 999, flexShrink: 0,
-              border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border-strong)'}`,
-              display: 'grid', placeItems: 'center',
-              background: active ? 'var(--accent)' : 'transparent',
-            }}>
-              {active && <span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--bg)' }} />}
-            </span>
-            <span style={{ fontSize: 13, textTransform: 'capitalize', color: active ? 'var(--text)' : 'var(--text-dim)', fontWeight: active ? 500 : 400 }}>
-              {label}
-            </span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-// ── Platform toggle card ──────────────────────────────────────────────────────
+// Platform destination row
 const PLATFORM_META = {
   youtube:   { name: 'YouTube',   color: 'oklch(0.68 0.21 25)' },
   instagram: { name: 'Instagram', color: 'oklch(0.70 0.20 340)' },
   tiktok:    { name: 'TikTok',    color: 'oklch(0.85 0.15 200)' },
 }
 
-function PlatformToggle({ platform, enabled, locked, onToggle, detail }: {
+function PlatformToggle({ platform, enabled, locked, onToggle, detail, children }: {
   platform: Platform; enabled: boolean; locked: boolean
-  onToggle: () => void; detail: string
+  onToggle: () => void; detail: string; children: React.ReactNode
 }) {
   const meta = PLATFORM_META[platform]
   return (
-    <div
-      role="button"
-      tabIndex={locked ? -1 : 0}
-      aria-disabled={locked}
-      aria-label={`${meta.name} destination`}
-      onClick={() => { if (!locked) onToggle() }}
-      onKeyDown={e => {
-        if (!locked && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault()
-          onToggle()
-        }
-      }}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: 12, borderRadius: 10,
-        background: enabled ? 'var(--bg-2)' : 'oklch(0.155 0.012 255 / 0.4)',
-        border: `1px solid ${enabled ? 'var(--border-strong)' : 'var(--hairline)'}`,
-        opacity: locked ? 0.35 : enabled ? 1 : 0.55,
-        textAlign: 'left', transition: 'all 120ms ease',
-        cursor: locked ? 'not-allowed' : 'pointer',
-      }}
-    >
-      <div style={{
-        width: 30, height: 30, borderRadius: 8,
-        background: enabled ? `oklch(from ${meta.color} l c h / 0.15)` : 'var(--surface-2)',
-        color: enabled ? meta.color : 'var(--text-mute)',
-        display: 'grid', placeItems: 'center',
-        border: `1px solid ${enabled ? `oklch(from ${meta.color} l c h / 0.4)` : 'var(--hairline)'}`,
-      }}>
-        <PlatformIcon platform={platform} size={16} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: enabled ? 'var(--text)' : 'var(--text-mute)' }}>{meta.name}</div>
-        <div className="mono" style={{ fontSize: 10, color: 'var(--text-mute)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {locked ? 'unavailable' : detail}
-        </div>
-      </div>
-      {!locked && (
-        <div onClick={e => e.stopPropagation()}>
-          <Toggle checked={enabled} onChange={() => onToggle()} />
-        </div>
-      )}
+    <div className={`post-platform-row${enabled ? ' selected' : ''}${locked ? ' locked' : ''}`}>
+      <button
+        type="button"
+        className="post-platform-main"
+        disabled={locked}
+        aria-pressed={enabled}
+        onClick={onToggle}
+      >
+        <span className="post-platform-check" aria-hidden="true">
+          {enabled && (
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+          )}
+        </span>
+        <span className="post-platform-icon" style={{ color: enabled ? meta.color : 'var(--text-mute)' }}>
+          <PlatformIcon platform={platform} size={17} />
+        </span>
+        <span className="post-platform-copy">
+          <span className="post-platform-name">{meta.name}</span>
+          <span className="mono post-platform-detail">{locked ? 'Long-form unavailable' : detail}</span>
+        </span>
+      </button>
+      <div className="post-platform-setting">{children}</div>
     </div>
   )
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// Main page
 export default function PostPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
@@ -179,6 +93,13 @@ export default function PostPage() {
   const [scheduleTime, setScheduleTime] = useState('')
   const [scheduling, setScheduling] = useState(false)
   const [scheduledMsg, setScheduledMsg] = useState('')
+  const previewUrl = useMemo(() => file ? URL.createObjectURL(file) : '', [file])
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
 
   useEffect(() => {
     ;(window as unknown as Record<string, unknown>).__uploadRunning = running
@@ -248,7 +169,7 @@ export default function PostPage() {
     const data = await safeJson(res)
     if (data.error) { setStatus('tiktok', 'failed', data.error); return { url: null, result: { success: false, error: data.error } } }
     if (data.draft) {
-      setStatus('tiktok', 'success', 'sent as a draft — open TikTok, it\'s in your inbox/notifications ready to post')
+      setStatus('tiktok', 'success', 'sent as a draft. Open TikTok; it is in your inbox and ready to post')
       return { url: null, result: { success: true } }
     }
     setStatus('tiktok', 'success')
@@ -331,7 +252,11 @@ export default function PostPage() {
   }
 
   function openSchedule() {
-    if (!file || enabledCount === 0) return
+    if (scheduleDate && scheduleTime) {
+      setScheduledMsg('')
+      setScheduleOpen(true)
+      return
+    }
     // Default to ~1 hour from now, rounded to the next 5 minutes.
     const d = new Date(Date.now() + 60 * 60 * 1000)
     d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0)
@@ -349,14 +274,14 @@ export default function PostPage() {
     if (when.getTime() < Date.now() - 60_000) { setScheduledMsg('That time is in the past'); return }
 
     setScheduling(true)
-    setScheduledMsg('Uploading video…')
+    setScheduledMsg('Uploading video...')
     try {
       let lastPct = -1
       const uploaded = await uploadMedia(file, (pct) => {
-        if (pct >= lastPct + 5 || pct === 100) { lastPct = pct; setScheduledMsg(`Uploading ${pct}%…`) }
+        if (pct >= lastPct + 5 || pct === 100) { lastPct = pct; setScheduledMsg(`Uploading ${pct}%...`) }
       })
 
-      setScheduledMsg('Saving schedule…')
+      setScheduledMsg('Saving schedule...')
       const res = await fetch('/api/schedule', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -410,325 +335,298 @@ export default function PostPage() {
     if (f?.type.startsWith('video/')) setFile(f)
   }
 
+  function clearComposer() {
+    setFile(null)
+    setCaption('')
+    setYtCaption('')
+    setHashtags([])
+    setSuggestedCaptions([])
+    setSuggestedHashtags([])
+    setSuggestedYtTitles([])
+    setStatuses(initialStatus())
+    setScheduledMsg('')
+  }
+
+  const isBusy = running || scheduling
+  const hasComposerContent = Boolean(file || caption || ytCaption || hashtags.length)
+
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 'var(--gap)' }}>
-      {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16 }}>
-          <div>
-            <div className="micro" style={{ marginBottom: 4 }}>Compose</div>
-            <h1 className="h1">New post</h1>
-          </div>
-          <span className="pill"><IconClock size={11} /> drafted just now</span>
+    <div className="post-page">
+      <header className="post-page-header">
+        <div>
+          <div className="micro">Compose</div>
+          <h1 className="h1">New post</h1>
         </div>
+        <span className={'pill' + (allPosted ? ' ok' : '')}>
+          <span className="dot" />
+          {allPosted ? 'Posted to ' + enabledCount : file ? 'Media ready' : 'Not published'}
+        </span>
+      </header>
 
-        {/* Video type switch */}
-        <div className="card" style={{ padding: 4 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-            {([
-              { id: 'short', label: 'Short-form', sub: 'under 60s · vertical · all platforms', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="3" width="10" height="18" rx="2" /><path d="M11 7h2" /></svg> },
-              { id: 'long',  label: 'Long-form',  sub: '1+ min · horizontal · YouTube',        icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M10 10l5 2-5 2z" fill="currentColor" stroke="none" /></svg> },
-            ] as { id: VideoType; label: string; sub: string; icon: React.ReactNode }[]).map(t => {
-              const active = videoType === t.id
-              return (
-                <button key={t.id} onClick={() => selectVideoType(t.id)} style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10,
-                  background: active ? 'var(--surface-2)' : 'transparent',
-                  border: `1px solid ${active ? 'var(--border-strong)' : 'transparent'}`,
-                  textAlign: 'left', transition: 'all 140ms ease', position: 'relative',
-                }}>
-                  {active && <span style={{ position: 'absolute', left: 8, top: 12, bottom: 12, width: 2, background: 'var(--accent)', borderRadius: 999, boxShadow: '0 0 8px var(--accent-glow)' }} />}
-                  <span style={{
-                    width: 36, height: 36, borderRadius: 9, display: 'grid', placeItems: 'center',
-                    background: active ? 'var(--accent-dim)' : 'var(--bg-2)',
-                    color: active ? 'var(--accent)' : 'var(--text-dim)',
-                    border: `1px solid ${active ? 'oklch(0.80 0.16 80 / 0.4)' : 'var(--hairline)'}`,
-                    marginLeft: active ? 6 : 0, transition: 'all 140ms ease',
-                  }}>{t.icon}</span>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: active ? 'var(--text)' : 'var(--text-dim)' }}>{t.label}</div>
-                    <div className="mono" style={{ fontSize: 10.5, color: 'var(--text-mute)', marginTop: 2 }}>{t.sub}</div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Drop zone */}
-        <div className="card" style={{ padding: 'var(--pad-sm)' }}>
-          <div
-            onDragOver={e => { e.preventDefault(); setDragging(true) }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-            onClick={() => !file && fileRef.current?.click()}
-            style={{
-              height: videoType === 'long' ? 140 : 180, borderRadius: 'var(--radius)',
-              border: `1.5px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
-              background: dragging ? 'var(--accent-dim)' : 'var(--bg-2)',
-              transition: 'all 180ms ease', cursor: file ? 'default' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-            }}
+      <div className="post-format-switch" aria-label="Video format">
+        {([
+          { id: 'short', label: 'Short-form', sub: 'Under 60s · vertical · all platforms', icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="7" y="3" width="10" height="18" rx="2" /><path d="M11 7h2" /></svg> },
+          { id: 'long', label: 'Long-form', sub: '1+ min · horizontal · YouTube', icon: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M10 10l5 2-5 2z" fill="currentColor" stroke="none" /></svg> },
+        ] as { id: VideoType; label: string; sub: string; icon: React.ReactNode }[]).map(option => (
+          <button
+            type="button"
+            key={option.id}
+            className={videoType === option.id ? 'active' : ''}
+            aria-pressed={videoType === option.id}
+            onClick={() => selectVideoType(option.id)}
           >
-            <input ref={fileRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={e => setFile(e.target.files?.[0] ?? null)} />
-            {!file ? (
-              <div style={{ textAlign: 'center', padding: 16 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, margin: '0 auto 12px', background: 'var(--surface-2)', display: 'grid', placeItems: 'center', border: '1px solid var(--border)', color: dragging ? 'var(--accent)' : 'var(--text-2)', transition: 'color 120ms ease' }}>
-                  <IconUpload size={20} />
-                </div>
-                <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 500, marginBottom: 4 }}>Drop video here, or click to browse</div>
-                <div className="micro">.mp4 .mov .webm · up to 256MB</div>
+            <span className="post-format-icon">{option.icon}</span>
+            <span>
+              <strong>{option.label}</strong>
+              <small className="mono">{option.sub}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="post-workspace">
+        <section className="card post-composer-card">
+          <div className="post-section-heading">
+            <div>
+              <div className="micro">Content</div>
+              <h2 className="h2">Build your post</h2>
+            </div>
+            <span className="mono post-helper">Write once, tailor where needed</span>
+          </div>
+
+          <div className="post-composer-grid">
+            <div className="post-media-column">
+              <div className="post-field-heading">
+                <label>Media</label>
+                <span className="mono">MP4 · MOV · WEBM</span>
               </div>
-            ) : (
-              <div style={{ width: '100%', height: '100%', display: 'flex', gap: 16, padding: 16 }}>
-                <div style={{ width: 100, height: '100%', borderRadius: 10, background: 'linear-gradient(135deg, var(--accent-dim), var(--surface-3))', display: 'grid', placeItems: 'center', border: '1px solid var(--border)', flexShrink: 0 }}>
-                  <IconFilm size={28} style={{ color: 'var(--text-dim)' }} />
+              <div
+                className={'post-drop-zone' + (dragging ? ' dragging' : '') + (file ? ' has-file' : '') + (videoType === 'long' ? ' landscape' : '')}
+                onDragOver={event => { event.preventDefault(); setDragging(true) }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={handleDrop}
+                onClick={() => { if (!file) fileRef.current?.click() }}
+              >
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="video/mp4,video/quicktime,video/webm,video/*"
+                  onChange={event => setFile(event.target.files?.[0] ?? null)}
+                />
+                {file ? (
+                  <>
+                    <video src={previewUrl} controls preload="metadata" aria-label={'Preview of ' + file.name} />
+                    <div className="post-media-meta">
+                      <div>
+                        <strong>{file.name}</strong>
+                        <span className="mono">{(file.size / 1024 / 1024).toFixed(1)} MB · ready</span>
+                      </div>
+                      <button type="button" className="btn tiny" onClick={() => fileRef.current?.click()}>Change</button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="post-upload-empty">
+                    <span className="post-upload-icon"><IconUpload size={21} /></span>
+                    <strong>Drop a video here</strong>
+                    <span>or click to browse</span>
+                    <small className="mono">Up to 256 MB</small>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="post-copy-column">
+              <div>
+                <div className="post-field-heading">
+                  <label htmlFor="post-caption">Caption</label>
+                  <span className={'mono' + (caption.length > 2200 ? ' over-limit' : '')}>{caption.length} / 2200</span>
                 </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 500, wordBreak: 'break-all' }}>{file.name}</div>
-                  <div className="mono" style={{ fontSize: 11, color: 'var(--text-mute)' }}>{(file.size / 1024 / 1024).toFixed(1)} MB · {file.type || 'video/mp4'}</div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span className="pill ok" style={{ height: 20, fontSize: 10 }}><span className="dot" />ready</span>
-                    <button className="btn ghost tiny" onClick={e => { e.stopPropagation(); setFile(null) }}>Change</button>
+                <textarea
+                  id="post-caption"
+                  className="textarea post-caption-input"
+                  rows={7}
+                  placeholder="Write once, post everywhere..."
+                  value={caption}
+                  onChange={event => setCaption(event.target.value)}
+                />
+              </div>
+
+              <div>
+                <div className="post-field-heading">
+                  <label htmlFor="post-youtube-title"><LogoYouTube size={13} /> YouTube title</label>
+                  <span className="mono">{ytCaption.length} / 60</span>
+                </div>
+                <input
+                  id="post-youtube-title"
+                  className="input"
+                  maxLength={60}
+                  placeholder="Add a YouTube title"
+                  value={ytCaption}
+                  onChange={event => setYtCaption(event.target.value)}
+                />
+              </div>
+
+              {hashtags.length > 0 && (
+                <div className="post-tag-list" aria-label="Selected hashtags">
+                  {hashtags.map(tag => (
+                    <button type="button" key={tag} onClick={() => setHashtags(current => current.filter(item => item !== tag))} className="mono" title="Remove hashtag">
+                      {tag} <IconX size={10} />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="post-ai-tools">
+                <div className="post-ai-label"><IconSparkles size={13} /> AI assist</div>
+                <div className="post-ai-actions">
+                  <button type="button" className="btn tiny" onClick={suggestCaptions} disabled={suggestingCaptions}>
+                    {suggestingCaptions ? 'Writing...' : 'Captions'}
+                  </button>
+                  <button type="button" className="btn tiny" onClick={suggestHashtags} disabled={suggestingHashtags}>
+                    {suggestingHashtags ? 'Finding...' : 'Hashtags'}
+                  </button>
+                  <button type="button" className="btn tiny" onClick={suggestYtTitle} disabled={suggestingYtTitle}>
+                    {suggestingYtTitle ? 'Writing...' : 'YouTube title'}
+                  </button>
+                </div>
+              </div>
+
+              {suggestedCaptions.length > 0 && (
+                <div className="post-suggestions">
+                  <div className="micro">Suggested captions · click to use</div>
+                  {suggestedCaptions.map((suggestion, index) => (
+                    <button type="button" key={index} onClick={() => { setCaption(suggestion); setSuggestedCaptions([]) }}>{suggestion}</button>
+                  ))}
+                </div>
+              )}
+
+              {suggestedHashtags.length > 0 && (
+                <div className="post-suggestions">
+                  <div className="post-suggestion-heading">
+                    <span className="micro">Suggested hashtags</span>
+                    <button type="button" onClick={() => setSuggestedHashtags([])}>Dismiss</button>
+                  </div>
+                  <div className="post-suggested-tags">
+                    {suggestedHashtags.map(tag => (
+                      <button type="button" key={tag} className="mono" onClick={() => { addTag(tag); setSuggestedHashtags(current => current.filter(item => item !== tag)) }}>{tag}</button>
+                    ))}
                   </div>
                 </div>
+              )}
+
+              {suggestedYtTitles.length > 0 && (
+                <div className="post-suggestions">
+                  <div className="post-suggestion-heading">
+                    <span className="micro">Suggested YouTube titles</span>
+                    <button type="button" onClick={() => setSuggestedYtTitles([])}>Dismiss</button>
+                  </div>
+                  {suggestedYtTitles.map((title, index) => (
+                    <button type="button" key={index} onClick={() => { setYtCaption(title.slice(0, 60)); setSuggestedYtTitles([]) }}>{title}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="post-composer-footer">
+            <span className="mono">{file ? 'Video selected' : 'Add a video to publish'}</span>
+            <button type="button" className="btn ghost" disabled={!hasComposerContent || isBusy} onClick={clearComposer}>Clear post</button>
+          </div>
+        </section>
+
+        <aside className="post-rail">
+          <section className="card post-rail-card">
+            <div className="post-rail-heading">
+              <div>
+                <div className="micro">Destinations</div>
+                <h2 className="h3">Choose where to publish</h2>
+              </div>
+              <span className="pill">{enabledCount} selected</span>
+            </div>
+
+            <div className="post-platform-list">
+              <PlatformToggle platform="instagram" enabled={enabled.instagram} locked={videoType === 'long'} onToggle={() => togglePlatform('instagram')} detail="Instagram Reels">
+                <span className="post-fixed-setting">Public</span>
+              </PlatformToggle>
+              <PlatformToggle platform="tiktok" enabled={enabled.tiktok} locked={videoType === 'long'} onToggle={() => togglePlatform('tiktok')} detail="TikTok video">
+                <select className="post-compact-select" aria-label="TikTok privacy" value={ttPrivacy} onChange={event => setTtPrivacy(event.target.value)} disabled={!enabled.tiktok || videoType === 'long'}>
+                  <option value="SELF_ONLY">Only me</option>
+                  <option value="FOLLOWER_OF_CREATOR">Followers</option>
+                  <option value="PUBLIC_TO_EVERYONE">Public</option>
+                </select>
+              </PlatformToggle>
+              <PlatformToggle platform="youtube" enabled={enabled.youtube} locked={false} onToggle={() => togglePlatform('youtube')} detail={videoType === 'long' ? 'YouTube video' : 'YouTube Shorts'}>
+                <select className="post-compact-select" aria-label="YouTube privacy" value={privacy} onChange={event => setPrivacy(event.target.value)} disabled={!enabled.youtube}>
+                  <option value="public">Public</option>
+                  <option value="unlisted">Unlisted</option>
+                  <option value="private">Private</option>
+                </select>
+              </PlatformToggle>
+            </div>
+
+            {ttPrivacy !== 'SELF_ONLY' && enabled.tiktok && videoType === 'short' && (
+              <p className="post-platform-note">TikTok Public and Followers require an audited TikTok app. Only me works before audit.</p>
+            )}
+            {videoType === 'long' && (
+              <p className="post-platform-note">Long-form publishes to YouTube only.</p>
+            )}
+          </section>
+
+          <section className="card post-rail-card">
+            <div className="micro">Publish</div>
+            <div className="post-publish-modes">
+              <button type="button" className={!scheduleOpen ? 'active' : ''} aria-pressed={!scheduleOpen} onClick={() => { setScheduleOpen(false); setScheduledMsg('') }}>
+                <span className="post-radio" />
+                <span><strong>Post now</strong><small>Publish immediately</small></span>
+              </button>
+              <button type="button" className={scheduleOpen ? 'active' : ''} aria-pressed={scheduleOpen} onClick={openSchedule}>
+                <span className="post-radio" />
+                <span><strong>Schedule</strong><small>Choose date and time</small></span>
+              </button>
+            </div>
+
+            {scheduleOpen && (
+              <div className="post-schedule-fields">
+                <label>
+                  <span className="micro">Date</span>
+                  <input type="date" className="input" value={scheduleDate} onChange={event => setScheduleDate(event.target.value)} />
+                </label>
+                <label>
+                  <span className="micro">Time</span>
+                  <input type="time" className="input" value={scheduleTime} onChange={event => setScheduleTime(event.target.value)} />
+                </label>
               </div>
             )}
-          </div>
-        </div>
 
-        {/* Caption */}
-        <div className="card" style={{ padding: 'var(--pad)' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span className="micro">{videoType === 'long' ? 'Short summary (IG · TT)' : 'Caption'}</span>
-            <span className="mono" style={{ fontSize: 10.5, color: caption.length > 2200 ? 'var(--bad)' : 'var(--text-mute)' }}>
-              {caption.length}<span style={{ color: 'var(--text-mute)' }}> / 2200</span>
-            </span>
-          </div>
-          <textarea className="textarea" rows={videoType === 'long' ? 3 : 5} placeholder="Write once, post everywhere…" value={caption} onChange={e => setCaption(e.target.value)} style={{ fontSize: 14 }} />
+            {scheduledMsg && <div className={'mono post-schedule-message' + (scheduling ? ' working' : '')}>{scheduledMsg}</div>}
 
-          {/* YouTube Title */}
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--hairline)' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span className="micro" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><LogoYouTube size={12} /> YouTube Title</span>
-              <span className="mono" style={{ fontSize: 10.5, color: ytCaption.length > 60 ? 'var(--bad)' : 'var(--text-mute)' }}>{ytCaption.length} / 60</span>
-            </div>
-            <textarea className="textarea" rows={2} maxLength={60} placeholder="YouTube video title…" value={ytCaption} onChange={e => setYtCaption(e.target.value)} style={{ fontSize: 14 }} />
-          </div>
-
-          {/* Active hashtags (from suggestions) */}
-          {hashtags.length > 0 && (
-            <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {hashtags.map(tag => (
-                <button key={tag} onClick={() => setHashtags(prev => prev.filter(t => t !== tag))} className="mono" style={{ fontSize: 11, padding: '4px 8px 4px 10px', borderRadius: 6, background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid oklch(0.80 0.16 80 / 0.3)', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title="Click to remove">
-                  {tag} <IconX size={10} style={{ opacity: 0.6 }} />
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Gemini AI suggestions */}
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hairline)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-mute)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <IconSparkles size={12} style={{ color: 'var(--accent)' }} /> GEMINI ·
-            </span>
-            <button className="btn ghost tiny" onClick={suggestCaptions} disabled={suggestingCaptions} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <IconSparkles size={11} />
-              {suggestingCaptions ? 'generating…' : 'suggest captions'}
-            </button>
-            <button className="btn ghost tiny" onClick={suggestHashtags} disabled={suggestingHashtags} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <IconSparkles size={11} />
-              {suggestingHashtags ? 'generating…' : 'suggest hashtags'}
-            </button>
-            <button className="btn ghost tiny" onClick={suggestYtTitle} disabled={suggestingYtTitle} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <LogoYouTube size={11} />
-              {suggestingYtTitle ? 'generating…' : 'suggest youtube title'}
-            </button>
-          </div>
-
-          {/* Suggested captions */}
-          {suggestedCaptions.length > 0 && (
-            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span className="micro">Suggested captions — click to use</span>
-              {suggestedCaptions.map((c, i) => (
-                <button key={i} onClick={() => { setCaption(c); setSuggestedCaptions([]) }} style={{
-                  padding: '9px 12px', borderRadius: 8, textAlign: 'left',
-                  background: 'var(--bg-2)', border: '1px solid var(--hairline)',
-                  fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5,
-                  transition: 'background 120ms ease',
-                }}>
-                  {c}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Suggested hashtags */}
-          {suggestedHashtags.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span className="micro">Suggested hashtags — click to add</span>
-                <button className="btn ghost tiny" onClick={() => setSuggestedHashtags([])}>dismiss</button>
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {suggestedHashtags.map(tag => (
-                  <button key={tag} onClick={() => { addTag(tag); setSuggestedHashtags(prev => prev.filter(t => t !== tag)) }} className="mono" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)', cursor: 'pointer', transition: 'background 120ms ease' }}>
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Suggested YouTube titles */}
-          {suggestedYtTitles.length > 0 && (
-            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 2 }}>
-                <span className="micro">Suggested YouTube titles — click to use</span>
-                <button className="btn ghost tiny" onClick={() => setSuggestedYtTitles([])}>dismiss</button>
-              </div>
-              {suggestedYtTitles.map((t, i) => (
-                <button key={i} onClick={() => { setYtCaption(t.slice(0, 60)); setSuggestedYtTitles([]) }} style={{
-                  padding: '9px 12px', borderRadius: 8, textAlign: 'left',
-                  background: 'var(--bg-2)', border: '1px solid var(--hairline)',
-                  fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5,
-                  transition: 'background 120ms ease',
-                }}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Platform toggles */}
-        <div className="card" style={{ padding: 'var(--pad)' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
-            <div className="micro">Destinations</div>
-            {videoType === 'long' && <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-mute)' }}>long-form · YouTube only</span>}
-          </div>
-          <div className="platform-grid-3" style={{ gap: 12 }}>
-            <PlatformToggle platform="youtube"   enabled={enabled.youtube}   locked={false}                        onToggle={() => togglePlatform('youtube')}   detail={`${videoType === 'long' ? 'Video' : 'Shorts'} · ${privacy}`} />
-            <PlatformToggle platform="instagram" enabled={enabled.instagram} locked={videoType === 'long'}          onToggle={() => togglePlatform('instagram')} detail="public" />
-            <PlatformToggle platform="tiktok"    enabled={enabled.tiktok}    locked={videoType === 'long'}          onToggle={() => togglePlatform('tiktok')}    detail={ttPrivacy === 'PUBLIC_TO_EVERYONE' ? 'public' : ttPrivacy === 'FOLLOWER_OF_CREATOR' ? 'followers' : 'only me'} />
-          </div>
-
-          {/* Privacy details */}
-          <div className="privacy-grid-3" style={{ marginTop: 16, gap: 14 }}>
-            <div style={{ padding: 12, borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--hairline)', opacity: enabled.youtube ? 1 : 0.4 }}>
-              <div className="micro" style={{ marginBottom: 8 }}>YouTube</div>
-              <PrivacyRadio value={privacy} onChange={setPrivacy} options={['public', 'unlisted', 'private']} />
-            </div>
-            <div style={{ padding: 12, borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--hairline)', opacity: enabled.instagram ? 1 : 0.4 }}>
-              <div className="micro" style={{ marginBottom: 8 }}>Instagram</div>
-              <div style={{ color: 'var(--text-mute)', fontSize: 12, fontStyle: 'italic', padding: '8px 4px' }}>
-                {videoType === 'long' ? 'Long-form not supported.' : 'Reels are always public via API.'}
-              </div>
-            </div>
-            <div style={{ padding: 12, borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--hairline)', opacity: enabled.tiktok ? 1 : 0.4 }}>
-              <div className="micro" style={{ marginBottom: 8 }}>TikTok</div>
-              {videoType === 'long' ? (
-                <div style={{ color: 'var(--text-mute)', fontSize: 12, fontStyle: 'italic', padding: '8px 4px' }}>Long-form not supported.</div>
-              ) : (
-                <>
-                  <PrivacyRadio value={ttPrivacy} onChange={setTtPrivacy} options={[['PUBLIC_TO_EVERYONE', 'Public'], ['FOLLOWER_OF_CREATOR', 'Followers'], ['SELF_ONLY', 'Only me']]} />
-                  {ttPrivacy !== 'SELF_ONLY' && (
-                    <div style={{ color: 'var(--text-mute)', fontSize: 11, marginTop: 8, lineHeight: 1.4 }}>
-                      Public/Followers needs your TikTok app to pass audit. Unaudited apps can only post “Only me”.
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Status panel */}
-        <div className="card" style={{ padding: '12px 16px' }}>
-          <div className="micro" style={{ marginBottom: 8 }}>Post status</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <StatusDot platform="youtube"   state={statuses.youtube.state}   message={statuses.youtube.message} />
-            <StatusDot platform="instagram" state={statuses.instagram.state} message={statuses.instagram.message} />
-            <StatusDot platform="tiktok"    state={statuses.tiktok.state}    message={statuses.tiktok.message} />
-          </div>
-        </div>
-
-        {/* Sticky action bar */}
-        <div className="card post-actions" style={{ padding: 'var(--pad-sm)', gap: 12, position: 'sticky', bottom: 16, backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}>
-          {running ? (
-            <span className="pill warn"><span className="dot" /> posting · {successCount}/{enabledCount} done</span>
-          ) : allPosted ? (
-            <span className="pill ok"><span className="dot" /> posted to {enabledCount} platform{enabledCount !== 1 ? 's' : ''}</span>
-          ) : (
-            <span className="pill"><span className="dot" /> {enabledCount} platform{enabledCount !== 1 ? 's' : ''} selected</span>
-          )}
-          <div className="post-actions-buttons" style={{ marginLeft: 'auto', alignItems: 'center', gap: 8 }}>
-            <button className="btn ghost" disabled={running}>Save as draft</button>
-            <button className="btn ghost" disabled={running || scheduling || !file || enabledCount === 0} onClick={openSchedule}><IconClock size={14} /> Schedule</button>
-            <button className="btn primary big" disabled={!file || running || enabledCount === 0} onClick={handlePostAll}>
-              {running ? (
-                <><span style={{ width: 14, height: 14, borderRadius: 999, border: '2px solid currentColor', borderTopColor: 'transparent', animation: 'spin 700ms linear infinite', display: 'inline-block' }} /> Posting…</>
-              ) : (
-                <>Post to {enabledCount} <IconArrowRight size={15} /></>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Schedule modal */}
-        {scheduleOpen && (
-          <div
-            onClick={() => !scheduling && setScheduleOpen(false)}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 50,
-              background: 'oklch(0 0 0 / 0.55)', backdropFilter: 'blur(4px)',
-              display: 'grid', placeItems: 'center', padding: 16,
-            }}
-          >
-            <div
-              onClick={e => e.stopPropagation()}
-              className="card"
-              style={{ width: '100%', maxWidth: 380, padding: 'var(--pad)', display: 'flex', flexDirection: 'column', gap: 14 }}
+            <button
+              type="button"
+              className="btn primary big post-publish-button"
+              disabled={!file || isBusy || enabledCount === 0 || (scheduleOpen && (!scheduleDate || !scheduleTime))}
+              onClick={scheduleOpen ? handleSchedule : handlePostAll}
             >
-              <div>
-                <div className="micro" style={{ marginBottom: 4 }}>Auto-post</div>
-                <h2 className="h1" style={{ fontSize: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <IconClock size={18} /> Schedule this post
-                </h2>
-              </div>
-
-              <div style={{ display: 'flex', gap: 10 }}>
-                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span className="micro">Date</span>
-                  <input type="date" className="textarea" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ fontSize: 14, padding: '9px 10px' }} />
-                </label>
-                <label style={{ width: 130, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span className="micro">Time</span>
-                  <input type="time" className="textarea" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} style={{ fontSize: 14, padding: '9px 10px' }} />
-                </label>
-              </div>
-
-              <div className="mono" style={{ fontSize: 11, color: 'var(--text-mute)', lineHeight: 1.5 }}>
-                Posts to {enabledCount} platform{enabledCount !== 1 ? 's' : ''} at the chosen time and shows in Content OS under <span style={{ color: 'var(--text-2)' }}>Scheduled</span>. Keep Content OS running so it can fire.
-              </div>
-
-              {scheduledMsg && (
-                <div className="mono" style={{ fontSize: 11.5, color: scheduling ? 'var(--text-2)' : 'var(--bad)' }}>{scheduledMsg}</div>
+              {running ? (
+                <><span className="post-spinner" /> Posting {successCount}/{enabledCount}</>
+              ) : scheduling ? (
+                <><span className="post-spinner" /> Scheduling</>
+              ) : (
+                <>{scheduleOpen ? 'Schedule to' : 'Post to'} {enabledCount} platform{enabledCount !== 1 ? 's' : ''} <IconArrowRight size={15} /></>
               )}
+            </button>
+          </section>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 2 }}>
-                <button className="btn ghost" disabled={scheduling} onClick={() => setScheduleOpen(false)}>Cancel</button>
-                <button className="btn primary" disabled={scheduling || !scheduleDate || !scheduleTime} onClick={handleSchedule}>
-                  {scheduling ? (
-                    <><span style={{ width: 13, height: 13, borderRadius: 999, border: '2px solid currentColor', borderTopColor: 'transparent', animation: 'spin 700ms linear infinite', display: 'inline-block' }} /> Scheduling…</>
-                  ) : (
-                    <>Schedule <IconArrowRight size={14} /></>
-                  )}
-                </button>
-              </div>
+          <section className="card post-rail-card post-status-card">
+            <div className="post-rail-heading">
+              <div className="micro">Status</div>
+              {running && <span className="pill warn"><span className="dot" /> working</span>}
             </div>
-          </div>
-        )}
-
+            <StatusDot platform="instagram" state={statuses.instagram.state} message={statuses.instagram.message} />
+            <StatusDot platform="tiktok" state={statuses.tiktok.state} message={statuses.tiktok.message} />
+            <StatusDot platform="youtube" state={statuses.youtube.state} message={statuses.youtube.message} />
+          </section>
+        </aside>
+      </div>
     </div>
   )
 }

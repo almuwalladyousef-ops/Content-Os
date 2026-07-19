@@ -2,17 +2,22 @@
 import { useEffect, useState } from 'react'
 
 export default function ReelPicker({ igId, selected, applyToAll, onChange }) {
-  const [reels, setReels] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState({ igId: null, reels: [] })
 
   useEffect(() => {
-    if (!igId) { setReels([]); return }
-    setLoading(true)
-    fetch(`/api/dm/reels?igId=${igId}`)
+    if (!igId) return
+    const controller = new AbortController()
+    fetch(`/api/dm/reels?igId=${igId}`, { signal: controller.signal })
       .then(r => r.json())
-      .then(data => { setReels(data); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(reels => setResult({ igId, reels }))
+      .catch(() => {
+        if (!controller.signal.aborted) setResult({ igId, reels: [] })
+      })
+    return () => controller.abort()
   }, [igId])
+
+  const reels = result.igId === igId ? result.reels : []
+  const loading = Boolean(igId && result.igId !== igId)
 
   function toggle(reelId) {
     const next = selected.includes(reelId)
@@ -23,14 +28,24 @@ export default function ReelPicker({ igId, selected, applyToAll, onChange }) {
 
   return (
     <div className="reel-picker">
-      <label className="apply-all">
-        <input
-          type="checkbox"
-          checked={applyToAll}
-          onChange={e => onChange({ targetReels: [], applyToAll: e.target.checked })}
-        />
-        Apply to all reels (current and future)
-      </label>
+      <div className="reel-scope-picker" role="group" aria-label="Choose reel audience">
+        <button
+          type="button"
+          className={!applyToAll ? 'active' : ''}
+          aria-pressed={!applyToAll}
+          onClick={() => onChange({ targetReels: selected, applyToAll: false })}
+        >
+          Selected reels
+        </button>
+        <button
+          type="button"
+          className={applyToAll ? 'active' : ''}
+          aria-pressed={applyToAll}
+          onClick={() => onChange({ targetReels: [], applyToAll: true })}
+        >
+          All current and future
+        </button>
+      </div>
 
       {!applyToAll && (
         <>
@@ -41,19 +56,24 @@ export default function ReelPicker({ igId, selected, applyToAll, onChange }) {
           )}
           <div className="reel-grid">
             {reels.map(reel => (
-              <div
+              <button
+                type="button"
                 key={reel.id}
                 className={`reel-card ${selected.includes(reel.id) ? 'selected' : ''}`}
+                aria-label={`Select reel: ${reel.caption?.slice(0, 60) || 'No caption'}`}
+                aria-pressed={selected.includes(reel.id)}
                 onClick={() => toggle(reel.id)}
               >
                 {reel.thumbnail_url ? (
+                  // Instagram thumbnail hosts are dynamic, so a native image is intentional.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={reel.thumbnail_url} alt={reel.caption || 'Reel'} />
                 ) : (
                   <div className="reel-placeholder">▶</div>
                 )}
                 <p className="reel-caption">{reel.caption?.slice(0, 60) || 'No caption'}</p>
                 {selected.includes(reel.id) && <div className="reel-check">✓</div>}
-              </div>
+              </button>
             ))}
           </div>
         </>

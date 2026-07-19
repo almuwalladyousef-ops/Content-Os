@@ -1,14 +1,28 @@
 import axios from 'axios'
 import { getAccountsWithStoredTokens } from '@/lib/dm/accounts'
 import {
-  getRules, hasBeenDMed, logDM, logWebhookEvent, checkAndIncrementSendCap,
+  getRules, hasBeenDMed, logWebhookEvent, checkAndIncrementSendCap,
   getPendingTwoStepForUser, setPendingTwoStep,
 } from '@/lib/dm/driveDB'
-import { fetchUserName, replyToComment, sendPrivateReply, sendPrivateReplyWithButton } from '@/lib/dm/instagram'
+import { fetchUserName, replyToComment, sendPrivateReplyWithButton } from '@/lib/dm/instagram'
 
 const FACEBOOK_BASE = 'https://graph.facebook.com/v21.0'
 const INSTAGRAM_BASE = 'https://graph.instagram.com/v21.0'
-const DEFAULT_COMMENT_REPLY = 'Sent you a DM.'
+const DEFAULT_COMMENT_REPLIES = [
+  'Sent you a DM. Check your inbox!',
+  'Just sent it. Take a look at your messages!',
+  'It is on the way. Check your DMs!',
+  'Done! I sent you the details privately.',
+]
+
+function commentReplyPool(rule) {
+  const supplied = rule.commentReplies?.length
+    ? rule.commentReplies
+    : rule.commentReply
+      ? [rule.commentReply]
+      : []
+  return DEFAULT_COMMENT_REPLIES.map((fallback, index) => String(supplied[index] || '').trim() || fallback)
+}
 
 function isInstagramLoginToken(token) {
   return token?.startsWith('IGA')
@@ -124,37 +138,36 @@ async function processPolledComment(account, rules, comment) {
     }
 
     const userInfo = await fetchUserName(commenterId, account.token).catch(() => ({ name: '', username: '' }))
-    const { messages, keyword } = getMessagesForMatch(rule, commentText)
+    const { keyword } = getMessagesForMatch(rule, commentText)
 
     try {
-      if (rule.twoStep) {
-        const pending = await getPendingTwoStepForUser(commenterId)
-        if (pending?.ruleId === rule.id) {
-          await logWebhookEvent({ type: 'poll_skipped_two_step_already_pending', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentText, mediaId, commentId })
-          continue
-        }
-
-        const prompt = rule.twoStepPrompt || 'Want me to send the link?'
-        const btnText = rule.twoStepButtonText || 'Send It In 5 min!'
-        await sendPrivateReplyWithButton(commentId, prompt, btnText, account.token, account.igId, userInfo)
-        await setPendingTwoStep(rule.id, commenterId, { keyword, triggerWord: 'yes' })
-        await logWebhookEvent({ type: 'poll_two_step_initiated', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentId, commentText, mediaId, timestamp })
-      } else {
-        await sendPrivateReply(commentId, messages, account.token, account.igId, userInfo)
-        await logDM(rule.id, commenterId)
-        await logWebhookEvent({ type: 'poll_private_reply_sent', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentId, commentText, mediaId, timestamp })
+      const pending = await getPendingTwoStepForUser(commenterId)
+      if (pending?.ruleId === rule.id) {
+        await logWebhookEvent({ type: 'poll_skipped_two_step_already_pending', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentText, mediaId, commentId })
+        continue
       }
+
+      const prompt = rule.twoStepPrompt || 'Want me to send the link?'
+      const btnText = rule.twoStepButtonText || 'Send It In 5 min!'
+      await sendPrivateReplyWithButton(commentId, prompt, btnText, account.token, account.igId, userInfo)
+      await setPendingTwoStep(rule.id, commenterId, { keyword, triggerWord: 'yes' })
+      await logWebhookEvent({ type: 'poll_two_step_initiated', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentId, commentText, mediaId, timestamp })
     } catch (err) {
       await logWebhookEvent({ type: 'poll_private_reply_failed', account: account.name, ruleId: rule.id, ruleName: rule.name, commentId, commentText, error: err.response?.data ?? err.message })
       continue
     }
 
     try {
-      await replyToComment(commentId, rule.commentReply || DEFAULT_COMMENT_REPLY, account.token)
+      const replyPool = commentReplyPool(rule)
+      const replyText = replyPool[Math.floor(Math.random() * replyPool.length)]
+      await replyToComment(commentId, replyText, account.token)
       await logWebhookEvent({ type: 'poll_comment_reply_sent', account: account.name, ruleId: rule.id, ruleName: rule.name, commentId, commentText })
     } catch (err) {
       await logWebhookEvent({ type: 'poll_comment_reply_failed', account: account.name, ruleId: rule.id, ruleName: rule.name, commentId, commentText, error: err.response?.data ?? err.message })
     }
+
+    // A single comment can start only one flow and receive one public reply.
+    break
   }
 }
 

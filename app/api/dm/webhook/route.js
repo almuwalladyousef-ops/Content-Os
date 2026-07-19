@@ -5,7 +5,7 @@ import {
   checkAndIncrementSendCap,
 } from '@/lib/dm/driveDB'
 import {
-  replyToComment, sendPrivateReply, sendPrivateReplyWithButton,
+  replyToComment, sendPrivateReplyWithButton,
   sendDMToUser, fetchUserName,
 } from '@/lib/dm/instagram'
 import { getAccountByIgIdWithStoredToken, getAccountsWithStoredTokens, resolveAccountForWebhookId } from '@/lib/dm/accounts'
@@ -13,7 +13,21 @@ import axios from 'axios'
 
 const BASE = 'https://graph.facebook.com/v21.0'
 const PAGE_WEBHOOK_FIELDS = 'feed,messages,message_reactions,messaging_handovers,message_edits'
-const DEFAULT_COMMENT_REPLY = 'Sent you a DM.'
+const DEFAULT_COMMENT_REPLIES = [
+  'Sent you a DM. Check your inbox!',
+  'Just sent it. Take a look at your messages!',
+  'It is on the way. Check your DMs!',
+  'Done! I sent you the details privately.',
+]
+
+function commentReplyPool(rule) {
+  const supplied = rule.commentReplies?.length
+    ? rule.commentReplies
+    : rule.commentReply
+      ? [rule.commentReply]
+      : []
+  return DEFAULT_COMMENT_REPLIES.map((fallback, index) => String(supplied[index] || '').trim() || fallback)
+}
 
 function isInstagramLoginToken(token) {
   return token?.startsWith('IGA')
@@ -284,13 +298,11 @@ async function processChange(igAccountId, change) {
       continue
     }
 
-    if (rule.twoStep) {
-      const pending = await getPendingTwoStepForUser(commenterId)
-      if (pending?.ruleId === rule.id) {
-        await logWebhookEvent({ type: 'skipped_two_step_already_pending', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentText, mediaId })
-        console.log('[webhook] rule', rule.name, 'skipped: two-step already pending')
-        continue
-      }
+    const pending = await getPendingTwoStepForUser(commenterId)
+    if (pending?.ruleId === rule.id) {
+      await logWebhookEvent({ type: 'skipped_two_step_already_pending', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentText, mediaId })
+      console.log('[webhook] rule', rule.name, 'skipped: two-step already pending')
+      continue
     }
 
     const withinCap = await checkAndIncrementSendCap(rule.id, rule.sendCap || null)
@@ -301,23 +313,16 @@ async function processChange(igAccountId, change) {
     }
 
     const userInfo = await fetchUserName(commenterId, account.token).catch(() => ({ name: '', username: '' }))
-    const { messages, keyword } = getMessagesForMatch(rule, commentText)
+    const { keyword } = getMessagesForMatch(rule, commentText)
 
     try {
-      if (rule.twoStep) {
-        // Step 1: send prompt + quick reply button
-        const prompt = rule.twoStepPrompt || 'Want me to send the link?'
-        const btnText = rule.twoStepButtonText || 'Send It In 5 min!'
-        await sendPrivateReplyWithButton(commentId, prompt, btnText, account.token, account.igId, userInfo)
-        await setPendingTwoStep(rule.id, commenterId, { keyword, triggerWord: 'yes' })
-        await logWebhookEvent({ type: 'two_step_initiated', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentId, commentText, mediaId })
-        console.log('[webhook] two-step initiated for rule:', rule.name)
-      } else {
-        await sendPrivateReply(commentId, messages, account.token, account.igId, userInfo)
-        await logDM(rule.id, commenterId)
-        await logWebhookEvent({ type: 'private_reply_sent', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentId, commentText, mediaId })
-        console.log('[webhook] private reply sent!')
-      }
+      // Step 1 is always required for comment-triggered DMs.
+      const prompt = rule.twoStepPrompt || 'Want me to send the link?'
+      const btnText = rule.twoStepButtonText || 'Send It In 5 min!'
+      await sendPrivateReplyWithButton(commentId, prompt, btnText, account.token, account.igId, userInfo)
+      await setPendingTwoStep(rule.id, commenterId, { keyword, triggerWord: 'yes' })
+      await logWebhookEvent({ type: 'two_step_initiated', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentId, commentText, mediaId })
+      console.log('[webhook] two-step initiated for rule:', rule.name)
     } catch (err) {
       await logWebhookEvent({ type: 'private_reply_failed', account: account.name, ruleId: rule.id, ruleName: rule.name, commentId, commentText, error: err.response?.data ?? err.message })
       console.error('[webhook] failed to send private reply for rule:', rule.name, err.response?.data ?? err.message)
@@ -325,11 +330,7 @@ async function processChange(igAccountId, change) {
     }
 
     try {
-      const replyPool = rule.commentReplies?.length
-        ? rule.commentReplies
-        : rule.commentReply
-          ? [rule.commentReply]
-          : [DEFAULT_COMMENT_REPLY]
+      const replyPool = commentReplyPool(rule)
       const replyText = replyPool[Math.floor(Math.random() * replyPool.length)]
       await replyToComment(commentId, replyText, account.token)
       await logWebhookEvent({ type: 'comment_reply_sent', account: account.name, ruleId: rule.id, ruleName: rule.name, commentId, commentText })
@@ -338,5 +339,8 @@ async function processChange(igAccountId, change) {
       await logWebhookEvent({ type: 'comment_reply_failed', account: account.name, ruleId: rule.id, ruleName: rule.name, commentId, commentText, error: err.response?.data ?? err.message })
       console.error('[webhook] failed to reply to comment for rule:', rule.name, err.response?.data ?? err.message)
     }
+
+    // A single comment can start only one flow and receive one public reply.
+    break
   }
 }

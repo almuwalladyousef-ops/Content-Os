@@ -3,8 +3,24 @@ import { getRules, saveRule, deleteRules, bulkUpdateRules } from '@/lib/dm/drive
 import { v4 as uuid } from 'uuid'
 
 const DEFAULT_TWO_STEP_BUTTON_TEXT = 'Send It In 5 min!'
+const DEFAULT_COMMENT_REPLIES = [
+  'Sent you a DM. Check your inbox!',
+  'Just sent it. Take a look at your messages!',
+  'It is on the way. Check your DMs!',
+  'Done! I sent you the details privately.',
+]
+
+function normalizeCommentReplies(body) {
+  const supplied = Array.isArray(body.commentReplies) && body.commentReplies.length
+    ? body.commentReplies
+    : body.commentReply
+      ? [body.commentReply]
+      : []
+  return DEFAULT_COMMENT_REPLIES.map((fallback, index) => String(supplied[index] || '').trim() || fallback)
+}
 
 function buildRule(body, id, createdAt) {
+  const commentReplies = normalizeCommentReplies(body)
   return {
     id,
     name: body.name || 'Untitled Rule',
@@ -21,12 +37,12 @@ function buildRule(body, id, createdAt) {
     dmKeywords: body.dmKeywords || [],          // inbound DM keywords
     perKeywordMessages: body.perKeywordMessages || {},
     messages: body.messages || [],
-    twoStep: body.twoStep ?? false,
+    twoStep: true,
     twoStepPrompt: body.twoStepPrompt || '',
     twoStepButtonText: body.twoStepButtonText || DEFAULT_TWO_STEP_BUTTON_TEXT,
     fallbackMessage: body.fallbackMessage || '',
-    commentReply: body.commentReply || 'Sent you a DM.',
-    commentReplies: body.commentReplies || ['Sent you a DM.'],
+    commentReply: commentReplies[0],
+    commentReplies,
     sendCap: body.sendCap ?? null,             // max DMs per day
     retriggerDays: body.retriggerDays ?? null, // allow re-trigger after N days
     startDate: body.startDate || null,
@@ -39,7 +55,10 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url)
   const igId = searchParams.get('igId')
   const workspaceId = searchParams.get('workspaceId')
-  const rules = await getRules()
+  const rules = (await getRules()).map(rule => {
+    const commentReplies = normalizeCommentReplies(rule)
+    return { ...rule, twoStep: true, commentReply: commentReplies[0], commentReplies }
+  })
   if (workspaceId) return NextResponse.json(rules.filter(r => r.workspaceId === workspaceId))
   return NextResponse.json(igId ? rules.filter(r => r.igId === igId) : rules)
 }
@@ -56,11 +75,15 @@ export async function POST(req) {
       const source = rules.find(r => r.id === body.sourceId)
       if (!source) return NextResponse.json({ error: 'Source rule not found' }, { status: 404 })
       const now = new Date().toISOString()
+      const commentReplies = normalizeCommentReplies(source)
       const duplicate = {
         ...source,
         id: uuid(),
         name: `${source.name} (Copy)`,
         active: false,
+        twoStep: true,
+        commentReply: commentReplies[0],
+        commentReplies,
         createdAt: now,
         updatedAt: now,
       }

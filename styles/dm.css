@@ -834,14 +834,19 @@
   
   /* Reel Picker */
   .reel-picker { display: flex; flex-direction: column; gap: 16px; }
-  .apply-all { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
-  .apply-all input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+  .reel-scope-picker { display: grid; grid-template-columns: 1fr 1.35fr; gap: 4px; padding: 4px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--bg); }
+  .reel-scope-picker button { min-width: 0; border: 0; background: transparent; color: var(--text-muted); font-size: 11px; line-height: 1.25; }
+  .reel-scope-picker button.active { background: var(--surface-3); color: var(--text); box-shadow: 0 0 0 1px var(--border); }
   
   .reel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
   
   .reel-card {
     border: 2px solid var(--border);
     border-radius: 8px;
+    padding: 0;
+    background: var(--surface);
+    color: var(--text);
+    text-align: left;
     overflow: hidden;
     cursor: pointer;
     position: relative;
@@ -1078,6 +1083,31 @@
     border-left: 1px solid var(--hairline);
     overflow-y: auto;
   }
+  .visual-rule-editor { color-scheme: dark; }
+  .visual-rule-editor input[type="checkbox"] {
+    appearance: none;
+    display: grid;
+    place-content: center;
+    flex: 0 0 auto;
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: var(--surface-2);
+    cursor: pointer;
+  }
+  .visual-rule-editor input[type="checkbox"]::before {
+    width: 9px;
+    height: 9px;
+    content: '';
+    clip-path: polygon(14% 44%, 0 59%, 40% 100%, 100% 20%, 84% 7%, 38% 72%);
+    background: var(--on-accent);
+    transform: scale(0);
+  }
+  .visual-rule-editor input[type="checkbox"]:checked { border-color: var(--accent); background: var(--accent); }
+  .visual-rule-editor input[type="checkbox"]:checked::before { transform: scale(1); }
+  .visual-rule-editor input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .flow-inspector__header { padding: 22px 22px 18px; border-bottom: 1px solid var(--hairline); }
   .flow-inspector__eyebrow { margin: 0 0 5px; color: var(--accent); font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.09em; text-transform: uppercase; }
   .flow-inspector__header h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.015em; }
@@ -1116,6 +1146,11 @@
   .flow-segmented button { border: 0; background: transparent; color: var(--text-muted); font-size: 11px; }
   .flow-segmented button.active { background: var(--surface-3); color: var(--text); }
   .flow-help { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.55; }
+  .flow-fixed-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid oklch(0.80 0.15 155 / 0.28); border-radius: 9px; background: var(--success-bg); }
+  .flow-fixed-status > span { display: flex; flex-direction: column; gap: 2px; }
+  .flow-fixed-status strong { color: var(--text); font-size: 12px; }
+  .flow-fixed-status small { color: var(--text-muted); font-size: 10.5px; }
+  .flow-fixed-status b { flex: 0 0 auto; color: var(--success); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; }
   .flow-notice { padding: 12px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--surface); color: var(--text-muted); font-size: 11px; line-height: 1.55; }
   .flow-notice strong { color: var(--text-2); }
   .flow-notice a { color: var(--accent); text-decoration: underline; }
@@ -1132,7 +1167,9 @@
   .flow-inspector .reel-placeholder { aspect-ratio: 1 / 1.15; }
   .flow-inspector .preview-bubble { max-width: 100%; }
   .flow-inspector .add-buttons { flex-wrap: wrap; }
-  .flow-inspector .comment-reply-row textarea { background: var(--bg); }
+  .flow-inspector .comment-reply-row { align-items: center; }
+  .flow-inspector .comment-reply-row textarea { background: var(--bg); resize: none; }
+  .comment-reply-number { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--accent); font-family: var(--font-mono); font-size: 10px; }
 
   .flow-management {
     justify-content: space-between;

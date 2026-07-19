@@ -3,6 +3,22 @@ import { getRules, saveRule, deleteRule, resetRuleDmedLog } from '@/lib/dm/drive
 import { sendDMToUser } from '@/lib/dm/instagram'
 import { getAccountByIgIdWithStoredToken } from '@/lib/dm/accounts'
 
+const DEFAULT_COMMENT_REPLIES = [
+  'Sent you a DM. Check your inbox!',
+  'Just sent it. Take a look at your messages!',
+  'It is on the way. Check your DMs!',
+  'Done! I sent you the details privately.',
+]
+
+function normalizeCommentReplies(body) {
+  const supplied = Array.isArray(body.commentReplies) && body.commentReplies.length
+    ? body.commentReplies
+    : body.commentReply
+      ? [body.commentReply]
+      : []
+  return DEFAULT_COMMENT_REPLIES.map((fallback, index) => String(supplied[index] || '').trim() || fallback)
+}
+
 export async function GET(req, { params }) {
   const { id } = await params
   const rules = await getRules()
@@ -19,7 +35,8 @@ export async function PUT(req, { params }) {
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   try {
-    const updated = { ...existing, ...body, id }
+    const commentReplies = normalizeCommentReplies({ ...existing, ...body })
+    const updated = { ...existing, ...body, id, twoStep: true, commentReply: commentReplies[0], commentReplies }
     const saved = await saveRule(updated)
     return NextResponse.json(saved)
   } catch (err) {

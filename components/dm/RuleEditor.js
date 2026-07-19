@@ -8,6 +8,17 @@ import { confirmDialog, alertDialog } from '@/lib/dm/dialog'
 
 const DEFAULT_TWO_STEP_PROMPT = 'Want me to send the link?'
 const DEFAULT_TWO_STEP_BUTTON_TEXT = 'Send It In 5 min!'
+const DEFAULT_COMMENT_REPLIES = [
+  'Sent you a DM. Check your inbox!',
+  'Just sent it. Take a look at your messages!',
+  'It is on the way. Check your DMs!',
+  'Done! I sent you the details privately.',
+]
+
+function normalizeCommentReplies(value, legacyValue) {
+  const supplied = Array.isArray(value) && value.length ? value : legacyValue ? [legacyValue] : []
+  return DEFAULT_COMMENT_REPLIES.map((fallback, index) => supplied[index]?.trim() || fallback)
+}
 
 const NEW_RULE = {
   name: '',
@@ -24,11 +35,11 @@ const NEW_RULE = {
   dmKeywords: [],
   perKeywordMessages: {},
   messages: [],
-  twoStep: false,
+  twoStep: true,
   twoStepPrompt: DEFAULT_TWO_STEP_PROMPT,
   twoStepButtonText: DEFAULT_TWO_STEP_BUTTON_TEXT,
   fallbackMessage: '',
-  commentReplies: ['Sent you a DM.'],
+  commentReplies: DEFAULT_COMMENT_REPLIES,
   sendCap: '',
   retriggerDays: '',
   startDate: '',
@@ -102,11 +113,11 @@ function InspectorHeader({ title, description }) {
 
 function Field({ label, hint, children }) {
   return (
-    <label className="flow-field">
+    <div className="flow-field" role="group" aria-label={label}>
       <span className="flow-field__label">{label}</span>
       {hint && <span className="flow-field__hint">{hint}</span>}
       {children}
-    </label>
+    </div>
   )
 }
 
@@ -148,25 +159,20 @@ export default function RuleEditor({ initial }) {
   const [allRules, setAllRules] = useState([])
   const [selectedStep, setSelectedStep] = useState('trigger')
   const [rule, setRule] = useState(() => {
-    if (!initial) return { ...NEW_RULE }
-    const commentReplies = initial.commentReplies?.length
-      ? initial.commentReplies
-      : initial.commentReply
-        ? [initial.commentReply]
-        : ['Sent you a DM.']
+    if (!initial) return { ...NEW_RULE, commentReplies: [...DEFAULT_COMMENT_REPLIES] }
     return {
       ...NEW_RULE,
       ...initial,
+      twoStep: true,
       twoStepPrompt: initial.twoStepPrompt || DEFAULT_TWO_STEP_PROMPT,
       twoStepButtonText: initial.twoStepButtonText || DEFAULT_TWO_STEP_BUTTON_TEXT,
-      commentReplies,
+      commentReplies: normalizeCommentReplies(initial.commentReplies, initial.commentReply),
     }
   })
 
   const [keywordInput, setKeywordInput] = useState('')
   const [negKwInput, setNegKwInput] = useState('')
   const [dmKwInput, setDmKwInput] = useState('')
-  const [newReplyInput, setNewReplyInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [cloning, setCloning] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -199,7 +205,7 @@ export default function RuleEditor({ initial }) {
   }, [initialInstagramId, initialWorkspaceId, isNew])
 
   const selectedWorkspace = workspaces.find(w => w.id === rule.workspaceId) || workspaces.find(w => w.igId === rule.igId)
-  const commentReplies = rule.commentReplies || ['Sent you a DM.']
+  const commentReplies = normalizeCommentReplies(rule.commentReplies, rule.commentReply)
   const firstMessage = rule.messages?.find(message => message.type === 'text')?.content?.trim()
   const buttonCount = rule.messages?.filter(message => message.type === 'button').length || 0
 
@@ -227,13 +233,6 @@ export default function RuleEditor({ initial }) {
     set('commentReplies', next)
   }
 
-  function addReplyVariant() {
-    const value = newReplyInput.trim()
-    if (!value || commentReplies.length >= 5) return
-    set('commentReplies', [...commentReplies, value])
-    setNewReplyInput('')
-  }
-
   function fail(message, step) {
     if (step) setSelectedStep(step)
     setError(message)
@@ -250,11 +249,11 @@ export default function RuleEditor({ initial }) {
 
     setSaving(true)
     setError('')
-    const cleanReplies = commentReplies.filter(reply => reply.trim())
     const payload = {
       ...rule,
+      twoStep: true,
       commentReply: undefined,
-      commentReplies: cleanReplies.length ? cleanReplies : ['Sent you a DM.'],
+      commentReplies: normalizeCommentReplies(commentReplies),
       sendCap: rule.sendCap ? Number(rule.sendCap) : null,
       retriggerDays: rule.retriggerDays ? Number(rule.retriggerDays) : null,
       startDate: rule.startDate || null,
@@ -360,19 +359,16 @@ export default function RuleEditor({ initial }) {
       <>
         <InspectorHeader title="Public reply" description="Reply under the comment after the DM is sent." />
         <div className="flow-inspector__body">
-          <p className="flow-help">Add up to five variants. Content OS picks one at random so replies feel less repetitive.</p>
+          <div className="flow-fixed-status"><span><strong>Always on</strong><small>Exactly one public reply is sent per comment.</small></span><b>1 of 4</b></div>
+          <p className="flow-help">Content OS chooses one of these four variations at random so replies feel less repetitive.</p>
           <div className="comment-replies-list">
             {commentReplies.map((reply, index) => (
               <div key={index} className="comment-reply-row">
-                <textarea rows={3} value={reply} onChange={e => updateReply(index, e.target.value)} placeholder="Sent you a DM." />
-                {commentReplies.length > 1 && <button type="button" className="remove-reply-btn" onClick={() => set('commentReplies', commentReplies.filter((_, itemIndex) => itemIndex !== index))}>×</button>}
+                <span className="comment-reply-number">{index + 1}</span>
+                <textarea aria-label={`Public reply variation ${index + 1}`} rows={2} value={reply} onChange={e => updateReply(index, e.target.value)} placeholder={DEFAULT_COMMENT_REPLIES[index]} />
               </div>
             ))}
           </div>
-          {commentReplies.length < 5 && <div className="keyword-input-row">
-            <input value={newReplyInput} onChange={e => setNewReplyInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && addReplyVariant()} placeholder="Another reply variant" />
-            <button type="button" onClick={addReplyVariant}>Add</button>
-          </div>}
         </div>
       </>
     )
@@ -381,15 +377,10 @@ export default function RuleEditor({ initial }) {
       <>
         <InspectorHeader title="Two-step opt-in" description="Ask for a tap before delivering the main message." />
         <div className="flow-inspector__body">
-          <label className="flow-switch-row">
-            <span><strong>Require opt-in</strong><small>Recommended when your message contains a link.</small></span>
-            <input type="checkbox" checked={rule.twoStep} onChange={e => set('twoStep', e.target.checked)} />
-          </label>
-          {rule.twoStep && <>
-            <Field label="First message"><textarea rows={4} value={rule.twoStepPrompt} onChange={e => set('twoStepPrompt', e.target.value)} placeholder={DEFAULT_TWO_STEP_PROMPT} /></Field>
-            <Field label="Quick reply button"><input value={rule.twoStepButtonText} onChange={e => set('twoStepButtonText', e.target.value)} placeholder={DEFAULT_TWO_STEP_BUTTON_TEXT} /></Field>
-            <div className="flow-message-preview"><span>{rule.twoStepPrompt || DEFAULT_TWO_STEP_PROMPT}</span><button type="button">{rule.twoStepButtonText || DEFAULT_TWO_STEP_BUTTON_TEXT}</button></div>
-          </>}
+          <div className="flow-fixed-status"><span><strong>Always on</strong><small>The full DM is sent after the person taps.</small></span><b>Required</b></div>
+          <Field label="First message"><textarea aria-label="Two-step first message" rows={4} value={rule.twoStepPrompt} onChange={e => set('twoStepPrompt', e.target.value)} placeholder={DEFAULT_TWO_STEP_PROMPT} /></Field>
+          <Field label="Quick reply button"><input aria-label="Two-step quick reply button" value={rule.twoStepButtonText} onChange={e => set('twoStepButtonText', e.target.value)} placeholder={DEFAULT_TWO_STEP_BUTTON_TEXT} /></Field>
+          <div className="flow-message-preview"><span>{rule.twoStepPrompt || DEFAULT_TWO_STEP_PROMPT}</span><button type="button">{rule.twoStepButtonText || DEFAULT_TWO_STEP_BUTTON_TEXT}</button></div>
         </div>
       </>
     )
@@ -488,10 +479,12 @@ export default function RuleEditor({ initial }) {
               </span>
             </FlowNode>
             <Connector onClick={() => setSelectedStep('reply')} />
-            <FlowNode id="reply" type="comment" label="Public reply" detail={commentReplies[0]?.trim() || 'Add a public reply'} selected={selectedStep === 'reply'} onSelect={setSelectedStep} />
+            <FlowNode id="reply" type="comment" label="Public reply" detail="One of four variations is sent at random" selected={selectedStep === 'reply'} onSelect={setSelectedStep}>
+              <span className="flow-node__state on">Always on</span>
+            </FlowNode>
             <Connector onClick={() => setSelectedStep('consent')} />
-            <FlowNode id="consent" type="consent" label="Ask for permission" detail={rule.twoStep ? (rule.twoStepPrompt || DEFAULT_TWO_STEP_PROMPT) : 'Skipped in this flow'} selected={selectedStep === 'consent'} onSelect={setSelectedStep} optional>
-              <span className={`flow-node__state ${rule.twoStep ? 'on' : ''}`}>{rule.twoStep ? 'Enabled' : 'Off'}</span>
+            <FlowNode id="consent" type="consent" label="Ask for permission" detail={rule.twoStepPrompt || DEFAULT_TWO_STEP_PROMPT} selected={selectedStep === 'consent'} onSelect={setSelectedStep}>
+              <span className="flow-node__state on">Always on</span>
             </FlowNode>
             <Connector onClick={() => setSelectedStep('message')} />
             <FlowNode id="message" type="message" label="Send private reply" detail={firstMessage || 'Build your DM message'} selected={selectedStep === 'message'} onSelect={setSelectedStep}>

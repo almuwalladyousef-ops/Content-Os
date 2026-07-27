@@ -75,6 +75,31 @@ async function inspectAccount(account) {
  * the RECIPIENT only after it has accepted the permission, so "no matching
  * user" proves the permission is in place. Nothing is ever delivered.
  */
+/**
+ * Listing conversations requires the messaging permission, so this is a clean
+ * read-only test of whether the account actually granted it. Stronger evidence
+ * than the send probe below: sending to an invalid recipient may be rejected on
+ * recipient lookup BEFORE the permission is ever evaluated.
+ */
+async function probeMessagingPermission(account) {
+  const base = isInstagramLoginToken(account.token) ? INSTAGRAM_BASE : FACEBOOK_BASE
+  const target = isInstagramLoginToken(account.token) ? 'me' : account.igId
+  try {
+    const res = await axios.get(`${base}/${target}/conversations`, {
+      params: { access_token: account.token, limit: 1 },
+    })
+    return { granted: true, conversations: res.data?.data?.length ?? 0, error: null }
+  } catch (err) {
+    const e = err.response?.data?.error
+    return {
+      granted: false,
+      code: e?.code,
+      error: e?.message ?? err.message,
+      note: 'cannot read the inbox — the messaging permission is very likely not granted, which also means tap webhooks are never delivered',
+    }
+  }
+}
+
 async function probeSendPermission(account) {
   const base = isInstagramLoginToken(account.token) ? INSTAGRAM_BASE : FACEBOOK_BASE
   const target = isInstagramLoginToken(account.token) ? 'me' : account.igId
@@ -109,7 +134,9 @@ export async function GET(req) {
 
   if (probe) {
     await Promise.all(inspected.map(async (a, i) => {
-      if (a.token?.valid) a.sendProbe = await probeSendPermission(accounts[i])
+      if (!a.token?.valid) return
+      a.messagingPermission = await probeMessagingPermission(accounts[i])
+      a.sendProbe = await probeSendPermission(accounts[i])
     }))
   }
   const igIds = new Set(inspected.filter(a => a.token?.valid).map(a => a.igId))

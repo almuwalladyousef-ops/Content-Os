@@ -2,7 +2,7 @@ import { verifySignature } from '@/lib/dm/verify'
 import {
   getRules, hasBeenDMed, logDM, logWebhookEvent,
   setPendingTwoStep, getPendingTwoStepForUser, clearPendingTwoStep,
-  checkAndIncrementSendCap,
+  checkAndIncrementSendCap, pendingAgeMs, PENDING_REPROMPT_AFTER_MS,
 } from '@/lib/dm/driveDB'
 import {
   replyToComment, sendPrivateReplyWithButton,
@@ -374,8 +374,10 @@ async function processChange(igAccountId, change) {
       continue
     }
 
+    // Only a RECENT prompt suppresses a repeat comment. An old un-tapped prompt
+    // must not lock this person out of the rule forever.
     const pending = await getPendingTwoStepForUser(commenterId)
-    if (pending?.ruleId === rule.id) {
+    if (pending?.ruleId === rule.id && pendingAgeMs(pending) < PENDING_REPROMPT_AFTER_MS) {
       await logWebhookEvent({ type: 'skipped_two_step_already_pending', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentText, mediaId })
       console.log('[webhook] rule', rule.name, 'skipped: two-step already pending')
       continue

@@ -3,6 +3,7 @@ import { getAccountsWithStoredTokens } from '@/lib/dm/accounts'
 import {
   getRules, hasBeenDMed, logWebhookEvent, checkAndIncrementSendCap,
   getPendingTwoStepForUser, setPendingTwoStep,
+  pendingAgeMs, PENDING_REPROMPT_AFTER_MS,
 } from '@/lib/dm/driveDB'
 import { fetchUserName, replyToComment, sendPrivateReplyWithButton, buildStep2Payload } from '@/lib/dm/instagram'
 
@@ -142,7 +143,7 @@ async function processPolledComment(account, rules, comment) {
 
     try {
       const pending = await getPendingTwoStepForUser(commenterId)
-      if (pending?.ruleId === rule.id) {
+      if (pending?.ruleId === rule.id && pendingAgeMs(pending) < PENDING_REPROMPT_AFTER_MS) {
         await logWebhookEvent({ type: 'poll_skipped_two_step_already_pending', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentText, mediaId, commentId })
         continue
       }

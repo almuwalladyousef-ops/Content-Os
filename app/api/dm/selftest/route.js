@@ -127,8 +127,43 @@ async function probeSendPermission(account) {
   }
 }
 
+/**
+ * Reads the newest thread. If the user's tap is sitting in the inbox but no
+ * webhook ever arrived, the problem is webhook DELIVERY, not our handling —
+ * which is the difference between a code bug and a Meta-side setting.
+ */
+async function readInbox(account) {
+  const base = isInstagramLoginToken(account.token) ? INSTAGRAM_BASE : FACEBOOK_BASE
+  const target = isInstagramLoginToken(account.token) ? 'me' : account.igId
+  try {
+    const convos = await axios.get(`${base}/${target}/conversations`, {
+      params: { access_token: account.token, fields: 'id,updated_time', limit: 3 },
+    })
+    const threads = []
+    for (const convo of convos.data?.data ?? []) {
+      const msgs = await axios.get(`${base}/${convo.id}`, {
+        params: { access_token: account.token, fields: 'messages{id,from,created_time,message}' },
+      })
+      threads.push({
+        id: convo.id,
+        updated: convo.updated_time,
+        messages: (msgs.data?.messages?.data ?? []).slice(0, 8).map(m => ({
+          from: m.from?.id ?? m.from?.username ?? null,
+          at: m.created_time,
+          text: String(m.message ?? '').slice(0, 60),
+        })),
+      })
+    }
+    return threads
+  } catch (err) {
+    return { error: err.response?.data?.error?.message ?? err.message }
+  }
+}
+
 export async function GET(req) {
-  const probe = new URL(req.url).searchParams.get('probe') === '1'
+  const params = new URL(req.url).searchParams
+  const probe = params.get('probe') === '1'
+  const inbox = params.get('inbox') === '1'
   const [accounts, rules] = await Promise.all([getAccountsWithStoredTokens(), getRules()])
   const inspected = await Promise.all(accounts.map(inspectAccount))
 
@@ -137,6 +172,12 @@ export async function GET(req) {
       if (!a.token?.valid) return
       a.messagingPermission = await probeMessagingPermission(accounts[i])
       a.sendProbe = await probeSendPermission(accounts[i])
+    }))
+  }
+
+  if (inbox) {
+    await Promise.all(inspected.map(async (a, i) => {
+      if (a.token?.valid) a.inbox = await readInbox(accounts[i])
     }))
   }
   const igIds = new Set(inspected.filter(a => a.token?.valid).map(a => a.igId))

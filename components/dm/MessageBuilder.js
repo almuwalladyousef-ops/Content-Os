@@ -1,6 +1,6 @@
 'use client'
 import { useState, useMemo } from 'react'
-import { planMessages } from '@/lib/dm/messagePlan'
+import { planMessages, INSTAGRAM_TEXT_LIMIT } from '@/lib/dm/messagePlan'
 
 const PERSONALIZATION_TOKENS = ['{{first_name}}', '{{name}}', '{{username}}']
 
@@ -113,6 +113,13 @@ export default function MessageBuilder({ messages, onChange }) {
                     onChange={e => updateBlock(i, 'content', e.target.value)}
                     rows={3}
                   />
+                  <div
+                    className="char-count"
+                    data-over={(block.content?.length || 0) > INSTAGRAM_TEXT_LIMIT}
+                  >
+                    {(block.content?.length || 0).toLocaleString()} / {INSTAGRAM_TEXT_LIMIT} chars
+                    {(block.content?.length || 0) > INSTAGRAM_TEXT_LIMIT && ' — will be sent as multiple messages'}
+                  </div>
                   <div className="token-chips">
                     {PERSONALIZATION_TOKENS.map(t => (
                       <button
@@ -175,12 +182,21 @@ export default function MessageBuilder({ messages, onChange }) {
               : `Arrives as ${plan.length} separate messages, in this order.`}
             {' '}Line breaks are sent exactly as you typed them. Instagram DMs are plain
             text — *asterisks* and other markdown arrive as literal characters.
+            {plan.some(m => m.splitInfo) && (
+              <> A message over Instagram&rsquo;s 1000-character limit is split at paragraph
+              breaks into several messages, marked below.</>
+            )}
           </p>
           <div className="preview-thread">
             {plan.map((msg, i) => (
               <div key={i} className="preview-bubble">
                 {plan.length > 1 && <span className="preview-bubble__index">{i + 1}</span>}
                 <p className="preview-text">{msg.text || '…'}</p>
+                {msg.splitInfo && (
+                  <span className="preview-split-tag">
+                    split {msg.splitInfo.part}/{msg.splitInfo.of} — over 1000 chars
+                  </span>
+                )}
                 {msg.buttons.map((b, bi) => (
                   <div key={bi} className="preview-button">
                     <span>{b.title || 'Button'}</span>

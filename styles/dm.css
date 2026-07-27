@@ -844,6 +844,9 @@
   }
   .preview-button-url { font-size: 11px; opacity: 0.8; }
   .preview-warn { font-size: 12px; color: var(--warn); }
+  .preview-split-tag { font-size: 11px; color: var(--warn); align-self: flex-start; }
+  .char-count { font-size: 11px; color: var(--text-muted); text-align: right; margin-top: -2px; }
+  .char-count[data-over="true"] { color: var(--warn); }
   
   /* Reel Picker */
   .reel-picker { display: flex; flex-direction: column; gap: 16px; }

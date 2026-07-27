@@ -1,5 +1,6 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { planMessages } from '@/lib/dm/messagePlan'
 
 const PERSONALIZATION_TOKENS = ['{{first_name}}', '{{name}}', '{{username}}']
 
@@ -74,6 +75,8 @@ export default function MessageBuilder({ messages, onChange }) {
 
   const textBlockCount = blocks.filter(b => b.type === 'text').length
   const buttonCount = blocks.filter(b => b.type === 'button').length
+  // Same planner the sender uses, so the preview cannot drift from reality.
+  const plan = useMemo(() => planMessages(blocks), [blocks])
 
   return (
     <div className="message-builder">
@@ -167,20 +170,25 @@ export default function MessageBuilder({ messages, onChange }) {
         <div className="preview">
           <p className="preview-label">DM Preview</p>
           <p className="preview-note">
-            Button blocks arrive as tappable Instagram buttons under the message.
+            {plan.length === 1
+              ? 'Arrives as 1 message.'
+              : `Arrives as ${plan.length} separate messages, in this order.`}
+            {' '}Line breaks are sent exactly as you typed them. Instagram DMs are plain
+            text — *asterisks* and other markdown arrive as literal characters.
           </p>
-          <div className="preview-bubble">
-            {blocks.map((b, i) => {
-              if (b.type === 'text') return <p key={i}>{b.content || '…'}</p>
-              if (b.type === 'link') return <p key={i}><a href={b.url} target="_blank" rel="noopener noreferrer">{b.url || 'link'}</a></p>
-              if (b.type === 'button') return (
-                <div key={i} className="preview-button">
-                  <span>{b.label || 'Button'}</span>
-                  {b.url && <span className="preview-button-url">{b.url}</span>}
-                </div>
-              )
-              return null
-            })}
+          <div className="preview-thread">
+            {plan.map((msg, i) => (
+              <div key={i} className="preview-bubble">
+                {plan.length > 1 && <span className="preview-bubble__index">{i + 1}</span>}
+                <p className="preview-text">{msg.text || '…'}</p>
+                {msg.buttons.map((b, bi) => (
+                  <div key={bi} className="preview-button">
+                    <span>{b.title || 'Button'}</span>
+                    {b.url && <span className="preview-button-url">{b.url}</span>}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
           {textBlockCount === 0 && (
             <p className="preview-warn">Add at least one message block to set context.</p>

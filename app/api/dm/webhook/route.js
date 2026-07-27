@@ -79,7 +79,15 @@ export async function POST(req) {
   }
   if (!validSig) console.warn('[webhook] accepted with invalid signature because ALLOW_UNVERIFIED_WEBHOOKS=true')
 
-  await processWebhook(rawBody)
+  // Always acknowledge. Meta retries 5xx deliveries and disables subscriptions
+  // that keep failing, and a retry would re-run a flow that may have already
+  // half-completed, so failures are recorded rather than bounced back.
+  try {
+    await processWebhook(rawBody)
+  } catch (err) {
+    console.error('[webhook] processing failed:', err)
+    await logWebhookEvent({ type: 'webhook_processing_failed', error: err.message }).catch(() => {})
+  }
   return new Response('OK', { status: 200 })
 }
 
@@ -154,6 +162,20 @@ async function deliverStepTwo(igAccountId, senderId, { ruleId, keyword, viaTap }
     return
   }
 
+  // Commenting on your own reel makes the "commenter" the account itself, and
+  // Instagram will not let an account message itself. Say so plainly instead of
+  // letting it surface as an opaque Graph API error.
+  const ownIds = [account.igId, account.instagramLoginId, account.instagramUserId].filter(Boolean)
+  if (ownIds.includes(senderId)) {
+    await clearPendingTwoStep(rule.id, senderId)
+    await logWebhookEvent({
+      type: 'two_step_failed',
+      ruleId: rule.id, ruleName: rule.name, senderId,
+      error: `Cannot DM ${account.name} from itself — this comment came from the account that owns the reel. Test with a different Instagram account.`,
+    })
+    return
+  }
+
   const alreadyDMed = await hasBeenDMed(rule.id, senderId, rule.retriggerDays ?? null)
   await clearPendingTwoStep(rule.id, senderId)
   if (alreadyDMed) {
@@ -186,16 +208,23 @@ async function deliverStepTwo(igAccountId, senderId, { ruleId, keyword, viaTap }
 
 // Inbound DM: handle two-step button taps and DM keyword triggers
 async function processInboundMessage(igAccountId, msg) {
+  const text = (msg?.message?.text || '').toLowerCase()
+  const tapped = parseStep2Payload(msg?.message?.quick_reply?.payload)
+  const isEcho = !!msg?.message?.is_echo
+
   // Our own outgoing messages come back as echoes. Logging them would burn a
   // Drive write in the middle of the flow, which is exactly the write that used
   // to clobber the pending two-step state, so drop them silently.
-  if (msg?.message?.is_echo) return
+  //
+  // One echo is worth keeping: the button message we send carries `quick_replies`
+  // (the options offered), never `quick_reply` (a selection). So an echo that
+  // carries a selection means someone tapped their own button — the account
+  // owner testing on themselves. Let it through so it can fail out loud.
+  if (isEcho && !tapped) return
 
-  const senderId = msg?.sender?.id
+  // On an echo the account is the sender, so the person who tapped is the recipient.
+  const senderId = isEcho ? (msg?.recipient?.id || msg?.sender?.id) : msg?.sender?.id
   if (!senderId) return
-
-  const text = (msg?.message?.text || '').toLowerCase()
-  const tapped = parseStep2Payload(msg?.message?.quick_reply?.payload)
 
   // A tapped button is authoritative: the rule id rides along in the payload.
   // Otherwise fall back to pending state, which completes the flow on ANY

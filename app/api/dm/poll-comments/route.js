@@ -3,7 +3,7 @@ import { getAccountsWithStoredTokens } from '@/lib/dm/accounts'
 import {
   getRules, hasBeenDMed, logWebhookEvent, checkAndIncrementSendCap,
   getPendingTwoStepForUser, setPendingTwoStep,
-  pendingAgeMs, PENDING_REPROMPT_AFTER_MS,
+  pendingAgeMs, PENDING_REPROMPT_AFTER_MS, claimEvent,
 } from '@/lib/dm/driveDB'
 import { fetchUserName, replyToComment, sendPrivateReplyWithButton, buildStep2Payload } from '@/lib/dm/instagram'
 
@@ -114,6 +114,11 @@ async function getRecentMediaWithComments(account, sinceMinutes) {
 async function processPolledComment(account, rules, comment) {
   const { mediaId, commentId, commentText, commenterId, timestamp } = comment
   if (!commentId || !commenterId || !commentText) return
+
+  // Shares the webhook path's key namespace: if the same comment is ever both
+  // webhook-delivered and picked up by this poll, only whichever gets here
+  // first acts on it.
+  if (!(await claimEvent(`comment:${commentId}`))) return
 
   for (const rule of rules) {
     if (!rule.active) continue

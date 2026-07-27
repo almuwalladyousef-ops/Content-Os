@@ -3,6 +3,7 @@ import {
   getRules, hasBeenDMed, logDM, logWebhookEvent,
   setPendingTwoStep, getPendingTwoStepForUser, clearPendingTwoStep,
   checkAndIncrementSendCap, pendingAgeMs, PENDING_REPROMPT_AFTER_MS,
+  claimEvent,
 } from '@/lib/dm/driveDB'
 import {
   replyToComment, sendPrivateReplyWithButton,
@@ -226,6 +227,17 @@ async function processInboundMessage(igAccountId, msg) {
   const senderId = isEcho ? (msg?.recipient?.id || msg?.sender?.id) : msg?.sender?.id
   if (!senderId) return
 
+  // Claim this exact message before doing anything else. Meta's webhook
+  // delivery is documented as at-least-once, and a redelivered copy of the
+  // same tap carries the same mid — drop the second copy here instead of
+  // re-running fetchUserName and the send, which is what caused every DM to
+  // go out twice.
+  const mid = msg?.message?.mid
+  if (mid && !(await claimEvent(`msg:${mid}`))) {
+    await logWebhookEvent({ type: 'duplicate_message_skipped', igAccountId, senderId, mid })
+    return
+  }
+
   // A tapped button is authoritative: the rule id rides along in the payload.
   // Otherwise fall back to pending state, which completes the flow on ANY
   // inbound message (users who type "yes" instead of tapping).
@@ -342,6 +354,14 @@ async function processChange(igAccountId, change) {
 
   if (!commenterId || !commentId || !commentText) {
     await logWebhookEvent({ type: 'skipped_missing_comment_data', igAccountId, commentId, commenterId, commentText, mediaId })
+    return
+  }
+
+  // Same redelivery protection as the tap path: a redelivered copy of the same
+  // comment event carries the same commentId, so drop the duplicate here
+  // rather than sending the button DM and the comment reply twice.
+  if (!(await claimEvent(`comment:${commentId}`))) {
+    await logWebhookEvent({ type: 'duplicate_comment_skipped', igAccountId, commentId, commenterId })
     return
   }
 

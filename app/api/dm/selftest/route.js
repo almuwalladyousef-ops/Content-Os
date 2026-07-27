@@ -67,9 +67,51 @@ async function inspectAccount(account) {
   return result
 }
 
-export async function GET() {
+/**
+ * Step 2 sends to `recipient: {id}` — a standard message, which needs the
+ * messaging permission AND an open messaging window. A missing permission and a
+ * closed window fail very differently, and we can tell them apart without
+ * messaging anyone: send to a deliberately invalid recipient. Instagram rejects
+ * the RECIPIENT only after it has accepted the permission, so "no matching
+ * user" proves the permission is in place. Nothing is ever delivered.
+ */
+async function probeSendPermission(account) {
+  const base = isInstagramLoginToken(account.token) ? INSTAGRAM_BASE : FACEBOOK_BASE
+  const target = isInstagramLoginToken(account.token) ? 'me' : account.igId
+  try {
+    await axios.post(
+      `${base}/${target}/messages`,
+      { recipient: { id: '0' }, message: { text: 'permission probe — not delivered' } },
+      { params: { access_token: account.token } }
+    )
+    return { permissionOk: null, note: 'probe unexpectedly succeeded; treat with suspicion' }
+  } catch (err) {
+    const e = err.response?.data?.error
+    const message = e?.message ?? err.message
+    const code = e?.code
+    const lower = String(message).toLowerCase()
+
+    if (lower.includes('permission') || code === 200 || code === 10) {
+      return { permissionOk: false, code, message, note: 'messaging permission is MISSING — step 2 can never send' }
+    }
+    if (lower.includes('token')) {
+      return { permissionOk: false, code, message, note: 'token problem' }
+    }
+    // Recipient rejected => the request got past permission checks.
+    return { permissionOk: true, code, message, note: 'permission present (recipient rejected, as expected)' }
+  }
+}
+
+export async function GET(req) {
+  const probe = new URL(req.url).searchParams.get('probe') === '1'
   const [accounts, rules] = await Promise.all([getAccountsWithStoredTokens(), getRules()])
   const inspected = await Promise.all(accounts.map(inspectAccount))
+
+  if (probe) {
+    await Promise.all(inspected.map(async (a, i) => {
+      if (a.token?.valid) a.sendProbe = await probeSendPermission(accounts[i])
+    }))
+  }
   const igIds = new Set(inspected.filter(a => a.token?.valid).map(a => a.igId))
 
   const problems = []
@@ -87,6 +129,9 @@ export async function GET() {
     }
     if (!a.canReceiveTaps) {
       problems.push(`${a.name}: NOT subscribed to "messages" — button taps never reach the app, so the DM can never send. POST /api/dm/setup-webhooks to fix.`)
+    }
+    if (a.sendProbe?.permissionOk === false) {
+      problems.push(`${a.name}: ${a.sendProbe.note} — ${a.sendProbe.message}`)
     }
   }
 

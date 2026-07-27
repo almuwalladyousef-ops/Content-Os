@@ -160,11 +160,45 @@ async function readInbox(account) {
   }
 }
 
+/**
+ * Webhook delivery has TWO layers and both must be on:
+ *   1. App level  — App Dashboard > Webhooks > Instagram: which fields Meta
+ *      will send to the callback URL at all. Dashboard-only, no API to set it.
+ *   2. Account level — POST /me/subscribed_apps, which /api/dm/setup-webhooks does.
+ * With `comments` on at layer 1 but not `messages`, comment events arrive and
+ * message events never do — no error anywhere, just silence.
+ */
+async function readAppSubscriptions() {
+  const appId = process.env.INSTAGRAM_APP_ID
+  const appSecret = process.env.INSTAGRAM_APP_SECRET
+  if (!appId || !appSecret) return { error: 'INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET not set' }
+  try {
+    const res = await axios.get(`${FACEBOOK_BASE}/${appId}/subscriptions`, {
+      params: { access_token: `${appId}|${appSecret}` },
+    })
+    const objects = {}
+    for (const entry of res.data?.data ?? []) {
+      objects[entry.object] = {
+        callbackUrl: entry.callback_url,
+        active: entry.active,
+        fields: (entry.fields ?? []).map(f => f.name ?? f),
+      }
+    }
+    return objects
+  } catch (err) {
+    return { error: err.response?.data?.error?.message ?? err.message }
+  }
+}
+
 export async function GET(req) {
   const params = new URL(req.url).searchParams
   const probe = params.get('probe') === '1'
   const inbox = params.get('inbox') === '1'
-  const [accounts, rules] = await Promise.all([getAccountsWithStoredTokens(), getRules()])
+  const [accounts, rules, appSubscriptions] = await Promise.all([
+    getAccountsWithStoredTokens(),
+    getRules(),
+    readAppSubscriptions(),
+  ])
   const inspected = await Promise.all(accounts.map(inspectAccount))
 
   if (probe) {
@@ -203,6 +237,17 @@ export async function GET(req) {
     }
   }
 
+  const igApp = appSubscriptions?.instagram
+  if (igApp && !igApp.fields?.includes('messages')) {
+    problems.push(
+      'APP-LEVEL webhook is missing the "messages" field. Comments arrive, button taps never do. ' +
+      'Fix in the Meta App Dashboard > Webhooks > Instagram: subscribe to "messages". This cannot be set over the API.'
+    )
+  }
+  if (appSubscriptions?.error) {
+    problems.push(`Could not read app-level webhook config — ${appSubscriptions.error}`)
+  }
+
   const activeRules = rules.filter(r => r.active)
   if (!activeRules.length) problems.push('No active rules.')
   for (const r of activeRules) {
@@ -223,6 +268,7 @@ export async function GET(req) {
   return NextResponse.json({
     ok: problems.length === 0,
     problems,
+    appSubscriptions,
     accounts: inspected,
     rules: activeRules.map(r => ({
       id: r.id, name: r.name, igId: r.igId,

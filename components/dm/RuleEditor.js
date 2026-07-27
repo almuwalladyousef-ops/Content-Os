@@ -7,7 +7,7 @@ import ReelPicker from './ReelPicker'
 import { confirmDialog, alertDialog } from '@/lib/dm/dialog'
 
 const DEFAULT_TWO_STEP_PROMPT = 'Want me to send the link?'
-const DEFAULT_TWO_STEP_BUTTON_TEXT = 'Send It In 5 min!'
+const DEFAULT_TWO_STEP_BUTTON_TEXT = 'Send it'
 const DEFAULT_COMMENT_REPLIES = [
   'Sent you a DM. Check your inbox!',
   'Just sent it. Take a look at your messages!',
@@ -379,7 +379,7 @@ export default function RuleEditor({ initial }) {
         <div className="flow-inspector__body">
           <div className="flow-fixed-status"><span><strong>Always on</strong><small>The full DM is sent after the person taps.</small></span><b>Required</b></div>
           <Field label="First message"><textarea aria-label="Two-step first message" rows={4} value={rule.twoStepPrompt} onChange={e => set('twoStepPrompt', e.target.value)} placeholder={DEFAULT_TWO_STEP_PROMPT} /></Field>
-          <Field label="Quick reply button"><input aria-label="Two-step quick reply button" value={rule.twoStepButtonText} onChange={e => set('twoStepButtonText', e.target.value)} placeholder={DEFAULT_TWO_STEP_BUTTON_TEXT} /></Field>
+          <Field label="Quick reply button" hint="Instagram caps this at 20 characters."><input aria-label="Two-step quick reply button" maxLength={20} value={rule.twoStepButtonText} onChange={e => set('twoStepButtonText', e.target.value)} placeholder={DEFAULT_TWO_STEP_BUTTON_TEXT} /></Field>
           <div className="flow-message-preview"><span>{rule.twoStepPrompt || DEFAULT_TWO_STEP_PROMPT}</span><button type="button">{rule.twoStepButtonText || DEFAULT_TWO_STEP_BUTTON_TEXT}</button></div>
         </div>
       </>

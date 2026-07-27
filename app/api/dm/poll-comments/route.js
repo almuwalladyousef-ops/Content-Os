@@ -4,7 +4,7 @@ import {
   getRules, hasBeenDMed, logWebhookEvent, checkAndIncrementSendCap,
   getPendingTwoStepForUser, setPendingTwoStep,
 } from '@/lib/dm/driveDB'
-import { fetchUserName, replyToComment, sendPrivateReplyWithButton } from '@/lib/dm/instagram'
+import { fetchUserName, replyToComment, sendPrivateReplyWithButton, buildStep2Payload } from '@/lib/dm/instagram'
 
 const FACEBOOK_BASE = 'https://graph.facebook.com/v21.0'
 const INSTAGRAM_BASE = 'https://graph.instagram.com/v21.0'
@@ -148,12 +148,15 @@ async function processPolledComment(account, rules, comment) {
       }
 
       const prompt = rule.twoStepPrompt || 'Want me to send the link?'
-      const btnText = rule.twoStepButtonText || 'Send It In 5 min!'
-      await sendPrivateReplyWithButton(commentId, prompt, btnText, account.token, account.igId, userInfo)
+      const btnText = rule.twoStepButtonText || 'Send it'
+      await sendPrivateReplyWithButton(
+        commentId, prompt, btnText, account.token, account.igId, userInfo,
+        buildStep2Payload(rule.id, keyword)
+      )
       await setPendingTwoStep(rule.id, commenterId, { keyword, triggerWord: 'yes' })
-      await logWebhookEvent({ type: 'poll_two_step_initiated', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, commentId, commentText, mediaId, timestamp })
+      await logWebhookEvent({ type: 'poll_two_step_initiated', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, username: userInfo.username || null, commentId, commentText, mediaId, timestamp })
     } catch (err) {
-      await logWebhookEvent({ type: 'poll_private_reply_failed', account: account.name, ruleId: rule.id, ruleName: rule.name, commentId, commentText, error: err.response?.data ?? err.message })
+      await logWebhookEvent({ type: 'poll_private_reply_failed', account: account.name, ruleId: rule.id, ruleName: rule.name, commenterId, username: userInfo.username || null, commentId, commentText, error: err.response?.data ?? err.message })
       continue
     }
 

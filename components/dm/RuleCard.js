@@ -18,6 +18,7 @@ export default function RuleCard({
   rule,
   account,
   ruleStats,       // { count, lastAt }
+  funnelStats,     // { asked, sent, failed, lastAskedAt, lastSentAt }
   isSelected,
   onToggleSelect,
   onToggleActive,
@@ -25,6 +26,8 @@ export default function RuleCard({
 }) {
   const dmCount = ruleStats?.count || 0
   const lastAt = ruleStats?.lastAt || null
+  const asked = funnelStats?.asked || 0
+  const tapped = funnelStats?.sent || 0
   const firstMsg = rule.messages?.find(m => m.type === 'text')?.content
 
   function handleActiveToggle(e) {
@@ -73,6 +76,12 @@ export default function RuleCard({
 
           <div className="rule-card__meta-row">
             {account && <span className="rule-account">{account.name}</span>}
+            {asked > 0 && (
+              <span className="rule-meta-chip" title="People who got the opt-in button vs. people who tapped it">
+                {asked} asked · {tapped} tapped
+                {asked ? ` (${Math.round((tapped / asked) * 100)}%)` : ''}
+              </span>
+            )}
             {dmCount > 0 && (
               <span className="rule-meta-chip">
                 {dmCount} DM{dmCount !== 1 ? 's' : ''} sent

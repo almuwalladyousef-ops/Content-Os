@@ -1,6 +1,12 @@
-import { getWebhookLog } from '@/lib/dm/driveDB'
+import { getWebhookLog, getFunnelStats, getPendingTwoStepList } from '@/lib/dm/driveDB'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const events = await getWebhookLog()
-  return Response.json({ events })
+  const [events, funnel, pending] = await Promise.all([
+    getWebhookLog(),
+    getFunnelStats(),
+    getPendingTwoStepList(),
+  ])
+  return Response.json({ funnel, pending, events })
 }

@@ -16,6 +16,7 @@ export default function RulesPage() {
   const { workspaces, activeWorkspace, loadingWorkspaces } = useActiveWorkspace()
   const [rules, setRules] = useState([])
   const [perRuleStats, setPerRuleStats] = useState({})
+  const [funnelStats, setFunnelStats] = useState({})
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(new Set())
   const [bulkAction, setBulkAction] = useState(null) // 'delete' | 'activate' | 'pause'
@@ -30,6 +31,7 @@ export default function RulesPage() {
     ]).then(([rls, stats]) => {
       setRules(rls)
       setPerRuleStats(stats.perRule || {})
+      setFunnelStats(stats.funnel?.perRule || {})
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
@@ -219,6 +221,7 @@ export default function RulesPage() {
                 rule={rule}
                 account={workspaces.find(w => w.id === rule.workspaceId) || workspaces.find(w => w.igId === rule.igId)}
                 ruleStats={perRuleStats[rule.id]}
+                funnelStats={funnelStats[rule.id]}
                 isSelected={selected.has(rule.id)}
                 onToggleSelect={toggleSelect}
                 onToggleActive={handleInlineToggle}

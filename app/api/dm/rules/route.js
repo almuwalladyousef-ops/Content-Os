@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getRules, saveRule, deleteRules, bulkUpdateRules } from '@/lib/dm/driveDB'
 import { v4 as uuid } from 'uuid'
 
-const DEFAULT_TWO_STEP_BUTTON_TEXT = 'Send It In 5 min!'
+const DEFAULT_TWO_STEP_BUTTON_TEXT = 'Send it'
 const DEFAULT_COMMENT_REPLIES = [
   'Sent you a DM. Check your inbox!',
   'Just sent it. Take a look at your messages!',

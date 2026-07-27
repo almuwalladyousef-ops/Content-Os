@@ -20,7 +20,54 @@ interface Job {
   fileName: string
   caption?: string
 }
-interface DmStats { totalDMs: number; totalRules: number; activeRules: number }
+interface FunnelEvent {
+  at: string
+  stage: 'asked' | 'sent' | 'failed'
+  ruleName: string | null
+  username: string | null
+  userId: string | null
+  error?: string
+}
+interface DmStats {
+  totalDMs: number
+  totalRules: number
+  activeRules: number
+  funnel?: {
+    totals: { asked: number; sent: number; failed: number }
+    recent: FunnelEvent[]
+  }
+}
+interface HomeHealth {
+  online: boolean
+  configured: boolean
+  checkedAt?: string
+  latencyMs?: number
+  serverTime?: string | null
+  error?: string | null
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(diff / 3600000)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(diff / 86400000)
+  if (d < 30) return `${d}d ago`
+  return new Date(iso).toLocaleDateString()
+}
+
+const STAGE_LABEL: Record<FunnelEvent['stage'], string> = {
+  asked: 'asked — button sent',
+  sent: 'tapped — DM delivered',
+  failed: 'failed',
+}
+const STAGE_COLOR: Record<FunnelEvent['stage'], string> = {
+  asked: 'var(--warn)',
+  sent: 'var(--ok)',
+  failed: 'var(--bad)',
+}
 
 const card: React.CSSProperties = {
   background: 'var(--surface)',
@@ -33,13 +80,22 @@ export default function Dashboard() {
   const [status, setStatus] = useState<Status | null>(null)
   const [jobs, setJobs] = useState<Job[] | null>(null)
   const [dm, setDm] = useState<DmStats | null>(null)
-  const [home, setHome] = useState<{ online: boolean; configured: boolean } | null>(null)
+  const [home, setHome] = useState<HomeHealth | null>(null)
 
   useEffect(() => {
     fetch('/api/auth/status').then(r => r.json()).then(setStatus).catch(() => {})
     fetch('/api/schedule').then(r => r.json()).then(d => setJobs(d.jobs ?? [])).catch(() => setJobs([]))
-    fetch('/api/dm/stats').then(r => r.json()).then(setDm).catch(() => {})
-    fetch('/api/home/health').then(r => r.json()).then(setHome).catch(() => setHome({ online: false, configured: false }))
+
+    // DM funnel and home-server health both change while you watch, so keep
+    // them live instead of only reflecting the moment the page was opened.
+    const loadDm = () => fetch('/api/dm/stats').then(r => r.json()).then(setDm).catch(() => {})
+    const loadHome = () => fetch('/api/home/health').then(r => r.json()).then(setHome)
+      .catch(() => setHome({ online: false, configured: false, error: 'dashboard could not reach the check' }))
+    loadDm()
+    loadHome()
+    const dmTimer = setInterval(loadDm, 30_000)
+    const homeTimer = setInterval(loadHome, 60_000)
+    return () => { clearInterval(dmTimer); clearInterval(homeTimer) }
   }, [])
 
   const platforms = [
@@ -65,7 +121,10 @@ export default function Dashboard() {
         <HomePill home={home} />
       </div>
 
-      {/* Top row: connections + DM stats */}
+      {/* DM automation funnel — how many were asked, how many tapped, who got it */}
+      <DmFunnel dm={dm} />
+
+      {/* Connections */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--gap)' }}>
         <section style={card}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -93,12 +152,12 @@ export default function Dashboard() {
         <section style={card}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <IconMessage size={16} />
-            <h2 className="h3">DM Automation</h2>
+            <h2 className="h3">DM rules</h2>
           </div>
           <div style={{ display: 'flex', gap: 20 }}>
-            <Stat value={dm?.activeRules ?? 0} label="active rules" />
-            <Stat value={dm?.totalRules ?? 0} label="total rules" />
-            <Stat value={dm?.totalDMs ?? 0} label="DMs sent" />
+            <Stat value={dm?.activeRules ?? 0} label="active" />
+            <Stat value={dm?.totalRules ?? 0} label="total" />
+            <Stat value={dm?.totalDMs ?? 0} label="people DMed" />
           </div>
           <Link href="/dm" style={linkRow}>Open DM Automation <IconArrowRight size={13} /></Link>
         </section>
@@ -152,26 +211,90 @@ const linkRow: React.CSSProperties = {
   fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none',
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
+function Stat({ value, label, color }: { value: number | string; label: string; color?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 24, fontWeight: 600, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 24, fontWeight: 600, lineHeight: 1, color }}>{value}</div>
       <div style={{ fontSize: 11, color: 'var(--text-mute)', marginTop: 4 }}>{label}</div>
     </div>
   )
 }
 
-function HomePill({ home }: { home: { online: boolean; configured: boolean } | null }) {
+// The DM funnel: everyone who got the opt-in button, everyone who tapped it,
+// and who the DM actually went out to. Refreshes itself every 30s.
+function DmFunnel({ dm }: { dm: DmStats | null }) {
+  const totals = dm?.funnel?.totals ?? { asked: 0, sent: 0, failed: 0 }
+  const recent = dm?.funnel?.recent ?? []
+  const tapRate = totals.asked ? Math.round((totals.sent / totals.asked) * 100) : null
+
+  return (
+    <section style={card}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <IconMessage size={16} />
+        <h2 className="h3">DM automation</h2>
+        <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-mute)', marginLeft: 'auto' }}>
+          {dm === null ? 'loading…' : `${dm.activeRules} active rule${dm.activeRules === 1 ? '' : 's'} · live`}
+        </span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 16 }}>
+        <Stat value={totals.asked} label="asked (button sent)" />
+        <Stat value={totals.sent} label="tapped → DM sent" color="var(--ok)" />
+        <Stat value={tapRate === null ? '—' : `${tapRate}%`} label="tap rate" />
+        <Stat value={totals.failed} label="failed" color={totals.failed ? 'var(--bad)' : undefined} />
+      </div>
+
+      <div style={{ marginTop: 18, borderTop: '1px solid var(--hairline)', paddingTop: 12 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-mute)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+          Recent activity
+        </div>
+        {recent.length === 0 ? (
+          <p style={{ color: 'var(--text-mute)', fontSize: 13 }}>
+            {dm === null
+              ? 'Loading…'
+              : 'Nothing yet. Comment one of your keywords on a targeted reel — the button send shows up here, and the tap right after it.'}
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {recent.slice(0, 8).map((e, i) => (
+              <div key={`${e.at}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: i === 0 ? 'none' : '1px solid var(--hairline)' }}>
+                <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0, background: STAGE_COLOR[e.stage] }} />
+                <span style={{ fontSize: 13, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {e.username ? `@${e.username}` : e.userId ? `user ${e.userId.slice(-6)}` : 'someone'}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{STAGE_LABEL[e.stage]}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-mute)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {e.error || e.ruleName || ''}
+                </span>
+                <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-mute)', whiteSpace: 'nowrap' }} title={new Date(e.at).toLocaleString()}>
+                  {relativeTime(e.at)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function HomePill({ home }: { home: HomeHealth | null }) {
   const online = home?.online
   const label = home === null ? 'checking…' : !home.configured ? 'home server not set' : online ? 'home server online' : 'home server offline'
   const color = home === null ? 'var(--text-mute)' : online ? 'var(--ok)' : 'var(--bad)'
+  const detail = home === null ? null
+    : online ? `${home.latencyMs ?? '?'}ms` : home.error ?? null
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
-      borderRadius: 999, border: '1px solid var(--border)', background: 'var(--surface)',
-    }}>
+    <div
+      title={home?.checkedAt ? `Last checked ${new Date(home.checkedAt).toLocaleTimeString()}${home.error ? ` — ${home.error}` : ''}` : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
+        borderRadius: 999, border: '1px solid var(--border)', background: 'var(--surface)',
+      }}
+    >
       <span style={{ width: 8, height: 8, borderRadius: 999, background: color, boxShadow: online ? `0 0 8px ${color}` : 'none' }} />
       <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{label}</span>
+      {detail && <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-mute)' }}>{detail}</span>}
     </div>
   )
 }

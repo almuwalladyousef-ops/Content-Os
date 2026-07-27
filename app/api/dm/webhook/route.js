@@ -140,10 +140,14 @@ async function deliverStepTwo(igAccountId, senderId, { ruleId, keyword, viaTap }
     return
   }
 
-  // Resolve account: try by igAccountId first, then by rule.igId, then first account
+  // Resolve account: the webhook's own account first, then the one the rule is
+  // pinned to. Only fall back to "any account" when the rule is not pinned —
+  // otherwise a stale or expired second connection can be picked here and the
+  // DM goes out from the wrong account, or not at all.
   const account = await resolveAccountForWebhookId(igAccountId)
-    || await getAccountByIgIdWithStoredToken(rule.igId)
-    || (await getAccountsWithStoredTokens())[0]
+    || (rule.igId
+      ? await getAccountByIgIdWithStoredToken(rule.igId)
+      : (await getAccountsWithStoredTokens())[0])
   if (!account) {
     await clearPendingTwoStep(rule.id, senderId)
     await logWebhookEvent({ type: 'two_step_no_account', ruleId: rule.id, ruleName: rule.name, senderId })

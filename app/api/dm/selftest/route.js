@@ -168,26 +168,42 @@ async function readInbox(account) {
  * With `comments` on at layer 1 but not `messages`, comment events arrive and
  * message events never do — no error anywhere, just silence.
  */
-async function readAppSubscriptions() {
-  const appId = process.env.INSTAGRAM_APP_ID
-  const appSecret = process.env.INSTAGRAM_APP_SECRET
-  if (!appId || !appSecret) return { error: 'INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET not set' }
-  try {
-    const res = await axios.get(`${FACEBOOK_BASE}/${appId}/subscriptions`, {
-      params: { access_token: `${appId}|${appSecret}` },
-    })
-    const objects = {}
-    for (const entry of res.data?.data ?? []) {
-      objects[entry.object] = {
-        callbackUrl: entry.callback_url,
-        active: entry.active,
-        fields: (entry.fields ?? []).map(f => f.name ?? f),
-      }
+async function readAppSubscriptionsWith(appId, appSecret) {
+  const res = await axios.get(`${FACEBOOK_BASE}/${appId}/subscriptions`, {
+    params: { access_token: `${appId}|${appSecret}` },
+  })
+  const objects = {}
+  for (const entry of res.data?.data ?? []) {
+    objects[entry.object] = {
+      callbackUrl: entry.callback_url,
+      active: entry.active,
+      fields: (entry.fields ?? []).map(f => f.name ?? f),
     }
-    return objects
-  } catch (err) {
-    return { error: err.response?.data?.error?.message ?? err.message }
   }
+  return objects
+}
+
+async function readAppSubscriptions() {
+  // /{app-id}/subscriptions needs the META app id, which is not the same as the
+  // Instagram app id used for Instagram Business Login. Try both; report which
+  // credentials exist so it is clear what is missing (never the values).
+  const candidates = [
+    { label: 'FACEBOOK_APP_ID', id: process.env.FACEBOOK_APP_ID, secret: process.env.FACEBOOK_APP_SECRET },
+    { label: 'INSTAGRAM_APP_ID', id: process.env.INSTAGRAM_APP_ID, secret: process.env.INSTAGRAM_APP_SECRET },
+  ]
+  const available = Object.fromEntries(candidates.map(c => [c.label, !!(c.id && c.secret)]))
+  const attempts = []
+
+  for (const c of candidates) {
+    if (!c.id || !c.secret) continue
+    try {
+      const objects = await readAppSubscriptionsWith(c.id, c.secret)
+      return { credentialsUsed: c.label, available, ...objects }
+    } catch (err) {
+      attempts.push({ credential: c.label, error: err.response?.data?.error?.message ?? err.message })
+    }
+  }
+  return { available, attempts, error: 'no credentials could read the app-level webhook config' }
 }
 
 export async function GET(req) {
